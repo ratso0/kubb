@@ -78,7 +78,7 @@
 
 <div id="lbOv" class="overlay hidden" style="z-index:5"><div class="card">
   <h1 style="font-size:26px">Topplista</h1>
-  <p style="margin:4px 0 12px">Vinster med minst antal kastade pinnar. Sparas i den här webbläsaren.</p>
+  <p id="lbInfo" style="margin:4px 0 12px"></p>
   <table id="lbTab"><thead><tr><th>#</th><th>Namn</th><th>Läge</th><th>Pinnar</th><th>Datum</th></tr></thead><tbody id="lbBody"></tbody></table>
   <p id="lbEmpty">Inga vinster än – vinn en match för att hamna här.</p>
   <p id="lbStats" style="margin:12px 0"></p>
@@ -905,6 +905,7 @@ function onPeers(ch){
       if(!o||(MP.seen[id]&&!ok)){ mpGone(); return; }
       if(!ok) continue;
       MP.seen[id]=true;
+      if(typeof pr.name==='string') MP.names[i]=pr.name.replace(/[<>]/g,'').trim().slice(0,16);
       if(pr.fr&&pr.fr.id){ const key=pr.fr.id*100000+(+pr.fr.f||0); if(key>(MP.lastTh[id]||0)){ MP.lastTh[id]=key; if(MP.turnTeam!==MP.me) mpOnFrame(pr.fr,i); } }
       if(pr.st&&pr.st.n>MP.lastN){ MP.lastN=pr.st.n; MP.push({t:'st',d:pr.st,from:i}); }
       const iw=MP.inWait, pw=MP.plWait;
@@ -929,10 +930,10 @@ function beginMP(seats,g){
   const me=seats.indexOf(myPeer); if(me<0) return;
   mpWant=false; lastG=g; mpStatus(''); $('mpLinkRow').classList.add('hidden'); mpButtons();
   const q=[]; let waiter=null;
-  MP={seats,g,me,team:me%2,mates:seats.map((_,i)=>i).filter(i=>i%2===me%2),turnTeam:0,turnNo:0,myTurns:0,lastN:0,lastTh:{},seen:{},plWait:null,inWait:null,gone:false,thId:0,
+  MP={seats,g,me,team:me%2,mates:seats.map((_,i)=>i).filter(i=>i%2===me%2),turnTeam:0,turnNo:0,myTurns:0,lastN:0,lastTh:{},seen:{},names:{},oppT:0,plWait:null,inWait:null,gone:false,thId:0,
     push(ev){ if(waiter){ const w=waiter; waiter=null; w(ev); } else q.push(ev); },
     next(){ return q.length?Promise.resolve(q.shift()):new Promise(r=>{ waiter=r; }); }};
-  room.presence({mp:2,g,seats,st:null,th:null,fr:null,pl:null,in:null}).catch(()=>{});
+  room.presence({mp:2,g,seats,name:playerName(),st:null,th:null,fr:null,pl:null,in:null}).catch(()=>{});
   $('startOv').classList.add('hidden'); $('endOv').classList.add('hidden');
   try{ if(!actx){const AC=window.AudioContext||window.webkitAudioContext; if(AC) actx=new AC();} }catch(_){}
   gameMP();
@@ -987,7 +988,7 @@ function mpReplayTick(dt){
 function mpState(extra){
   if(!MP) return 0;
   const n=MP.lastN=MP.lastN+1;
-  const st=Object.assign({n,left:S.left,tot:S.total,kg:[r3(king.body.position.x),r3(king.body.position.z)],
+  const st=Object.assign({n,left:S.left,tot:S.total,tc:S.throws,kg:[r3(king.body.position.x),r3(king.body.position.z)],
     k:kubbs.map(k=>{ const d=!k.inWorld?1:k.down?2:0; return [d?0:r3(k.body.position.x),d?0:r3(k.body.position.z),k.half==='P'?0:1,k.type==='base'?0:1,d]; })},extra||{});
   room.presence({st}).catch(()=>{});
   return n;
@@ -1038,6 +1039,7 @@ async function listenTurn(){
     if(MP.replay){ await wait(0.14); MP.replay=null; }
     const s=ev.d; applyState(s,mir);
     if(!mir&&typeof s.tot==='number'&&typeof s.left==='number') used=Math.max(used,s.tot-s.left);
+    if(mir&&typeof s.tc==='number') MP.oppT=clamp(s.tc,0,999);
     if(s.over){
       S.throws+=used;
       const win=(s.over.w===0)!==mir, c=s.over.c;
@@ -1082,13 +1084,20 @@ async function gameMP(){
       mpState({turn:1,pend:pending.map(k=>kubbs.indexOf(k))}); pending=[]; MP.myTurns++; MP.turnTeam^=1; MP.turnNo++;
     } else { r=await listenTurn(); if(r) break; if(MP.turnTeam!==MP.me) pending=[]; }
   }
-  const big=MP.seats.length>2; MP=null; S.label=null;
+  const big=MP.seats.length>2;
+  if(!r.left){ // spara vinnaren på topplistan hos alla som var med i matchen
+    const win=r.w==='P', tm=win?MP.team:MP.team^1, nm=MP.seats.map((_,i)=>i).filter(i=>i%2===tm).map(i=>i===MP.me?playerName():(MP.names[i]||'Spelare')).join(' & ');
+    r.lb={n:nm,t:win?S.throws:MP.oppT,g:MP.g};
+  }
+  MP=null; S.label=null;
   setTimeout(()=>{ if(room&&!MP&&!mpWant) room.presence({mp:0,g:null,seats:null}).catch(()=>{}); },4000);
   if(big&&r.w==='P'&&r.why==='Du fällde kungen!') r.why='Ert lag fällde kungen!';
   finish(r,big);
 }
 
-/* ---------- Topplista (sparas i den här webbläsaren) ---------- */
+/* ---------- Topplista ---------- */
+// Adressen till topplista.php på din server (https). Lämna tom för att bara spara i webbläsaren.
+const LB_URL=window.KUBB_LB||'https://hagforsflygklubb.se/kubb/topplista.php';
 let gameMode='', diffName='normal';
 const store={ get(k,d){ try{ const v=JSON.parse(localStorage.getItem(k)); return v==null?d:v; }catch(_){ return d; } }, set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(_){} } };
 function playerName(){ const n=String($('pname').value||'').trim().slice(0,16); return n||'Spelare'; }
@@ -1096,22 +1105,40 @@ function lbRecord(r){
   const st=store.get('kubb3d.stats',{w:0,l:0});
   if(r.w==='P') st.w=(st.w||0)+1; else st.l=(st.l||0)+1;
   store.set('kubb3d.stats',st);
-  if(r.w!=='P'||r.left||!S.throws) return false;
+  if(r.left) return false;
+  const e=r.lb||(r.w==='P'?{n:playerName(),t:S.throws}:null);
+  if(!e||!e.t) return false;
   const lb=store.get('kubb3d.lb',[]); if(!Array.isArray(lb)) return false;
-  lb.push({n:playerName(),m:gameMode,t:S.throws,d:new Date().toISOString().slice(0,10)});
-  lb.sort((a,b)=>a.t-b.t); store.set('kubb3d.lb',lb.slice(0,50)); return true;
+  lb.push({n:String(e.n).slice(0,40),m:gameMode,t:e.t,d:new Date().toISOString().slice(0,10)});
+  lb.sort((a,b)=>a.t-b.t); store.set('kubb3d.lb',lb.slice(0,50));
+  // gemensam topplista: alla i matchen skickar samma rad, servern sparar den en gång (samma match-id)
+  if(LB_URL){
+    let g=e.g; if(!g){ g=''; while(g.length<10) g+=Math.random().toString(36).slice(2); g=g.slice(0,10); }
+    try{ fetch(LB_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({n:String(e.n).slice(0,40),m:gameMode,t:e.t,g})}).catch(()=>{}); }catch(_){}
+  }
+  return true;
 }
-function lbShow(){
-  const lb=store.get('kubb3d.lb',[]), st=store.get('kubb3d.stats',{w:0,l:0}), tb=$('lbBody');
-  tb.textContent='';
-  (Array.isArray(lb)?lb:[]).slice(0,15).forEach((e,i)=>{
+function lbRender(rows){
+  const tb=$('lbBody'); tb.textContent='';
+  rows.slice(0,25).forEach((e,i)=>{
     const tr=document.createElement('tr');
-    [i+1,e.n,e.m,e.t,e.d].forEach(v=>{ const td=document.createElement('td'); td.textContent=String(v==null?'':v); tr.appendChild(td); });
+    [i+1,e&&e.n,e&&e.m,e&&e.t,e&&e.d].forEach(v=>{ const td=document.createElement('td'); td.textContent=String(v==null?'':v).slice(0,44); tr.appendChild(td); });
     tb.appendChild(tr);
   });
-  $('lbEmpty').classList.toggle('hidden',!!(lb&&lb.length));
-  $('lbStats').textContent='Vinster: '+(st.w||0)+' · Förluster: '+(st.l||0);
+  $('lbEmpty').classList.toggle('hidden',rows.length>0);
+}
+function lbShow(){
+  const local=store.get('kubb3d.lb',[]), st=store.get('kubb3d.stats',{w:0,l:0}), rows=Array.isArray(local)?local:[];
+  const LOCAL='Vinster med minst antal kastade pinnar – dina egna och vinnarna i de onlinematcher du varit med i. Sparas i den här webbläsaren.';
+  lbRender(rows);
+  $('lbInfo').textContent=LB_URL?'Hämtar den gemensamma topplistan …':LOCAL;
+  $('lbStats').textContent='Dina vinster: '+(st.w||0)+' · förluster: '+(st.l||0);
   $('lbOv').classList.remove('hidden');
+  if(!LB_URL) return;
+  fetch(LB_URL,{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(j=>{
+    if(!j||!Array.isArray(j.top)) throw 0;
+    lbRender(j.top); $('lbInfo').textContent='Gemensam topplista – vinster med minst antal kastade pinnar.';
+  }).catch(()=>{ $('lbInfo').textContent='Kunde inte nå den gemensamma topplistan just nu – visar den som är sparad i den här webbläsaren.'; });
 }
 let running=false;
 async function game(){
@@ -1128,7 +1155,7 @@ async function finish(r,big){
   await wait(1.2);
   $('endT').textContent=r.w==='P'?(big?'Ni vann! 👑':'Du vann! 👑'):(big?'Ni förlorade':'Du förlorade');
   const saved=AUTO?false:lbRecord(r);
-  $('endP').textContent=r.why+(S.throws?' · Kastade pinnar: '+S.throws:'')+(saved?' · Sparat på topplistan.':'');
+  $('endP').textContent=r.why+(S.throws?' · Kastade pinnar: '+S.throws:'')+(saved?(r.w==='P'?' · Sparat på topplistan.':' · Vinnaren sparad på topplistan.'):'');
   $('endOv').classList.remove('hidden');
   if(window.KUBB_LOG) window.KUBB_LOG('END '+r.w+' '+r.why);
 }
