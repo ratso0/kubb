@@ -28,6 +28,10 @@
   #modeBtn{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);flex:none;min-width:0;font-size:14px;padding:9px 16px;border-radius:20px;background:rgba(20,30,20,.72);color:#fff}
   #modeBtn:hover{background:rgba(20,30,20,.9)}
   #mvL{left:16px}#mvR{right:16px}#mvU{left:16px;bottom:84px}#mvD{right:16px;bottom:84px}
+  #lbTab{width:100%;border-collapse:collapse;font-size:14px}
+  #lbTab th,#lbTab td{text-align:left;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.14)}
+  #lbTab th{color:#cfdcc8;font-weight:600}
+  #lbTab td:nth-child(4),#lbTab th:nth-child(4){text-align:right;font-variant-numeric:tabular-nums}
   .hidden{display:none!important}
 </style>
 </head>
@@ -51,12 +55,13 @@
     <li><b>Flytta dig</b> i sidled med A/D eller ◀ ▶, och bakåt/framåt med S/W eller ▼ ▲ (aldrig framför kastlinjen).</li>
     <li><b>Kastläge:</b> välj <b>Båge</b> (pinnen roterar) eller <b>Spräng</b> (rakt och hårt som en torped) med knappen eller F.</li>
     <li><b>2 mot 2:</b> lagkamraterna kastar varannan pinne.</li>
-    <li>6 kastpinnar per omgång. Fällda kubbar kastas in på din planhalva som <b>fältkubbar</b>. Alla kastas in först, sedan reses de. Hamnar en kubb utanför får man ett omkast – missar man igen placerar motståndaren den.</li>
+    <li>6 kastpinnar per omgång – men öppningen är <b>2-4-6</b>: först 2 pinnar, sedan får motståndaren 4, därefter 6. Fällda kubbar kastas in på din planhalva som <b>fältkubbar</b>. Alla kastas in först, sedan reses de. Hamnar en kubb utanför får man ett omkast – missar man igen placerar motståndaren den.</li>
     <li>Fältkubbar måste fällas <b>före</b> baskubbarna.</li>
     <li>Missar motståndaren dina fältkubbar får du kasta från den närmaste.</li>
     <li>Fäller du <b>kungen</b> för tidigt förlorar du direkt.</li>
     <li>VM-regler och VM-mått: en kubb som faller och reser sig igen räknas som fälld.</li>
   </ul>
+  <div class="btns" style="margin-bottom:14px"><input id="pname" maxlength="16" placeholder="Ditt namn" style="flex:2;min-width:0;font:inherit;font-size:15px;padding:11px;border-radius:10px;border:0;background:#eef2ea;color:#1c261c"><button id="lbBtn" style="flex:1">Topplista</button></div>
   <p style="margin:0 0 8px">Spela mot datorn – välj svårighetsgrad:</p>
   <div class="btns"><button data-d="easy">Lätt</button><button data-d="normal">Normal</button><button data-d="hard">Svår</button></div>
   <p style="margin:16px 0 8px">Eller spela mot andra över nätet:</p>
@@ -68,9 +73,17 @@
 
 <div id="endOv" class="overlay hidden"><div class="card" style="text-align:center">
   <h1 id="endT"></h1><p id="endP"></p>
-  <div class="btns"><button id="again">Spela igen</button></div>
+  <div class="btns"><button id="again">Spela igen</button><button id="lbBtn2">Topplista</button></div>
 </div></div>
 
+<div id="lbOv" class="overlay hidden" style="z-index:5"><div class="card">
+  <h1 style="font-size:26px">Topplista</h1>
+  <p style="margin:4px 0 12px">Vinster med minst antal kastade pinnar. Sparas i den här webbläsaren.</p>
+  <table id="lbTab"><thead><tr><th>#</th><th>Namn</th><th>Läge</th><th>Pinnar</th><th>Datum</th></tr></thead><tbody id="lbBody"></tbody></table>
+  <p id="lbEmpty">Inga vinster än – vinn en match för att hamna här.</p>
+  <p id="lbStats" style="margin:12px 0"></p>
+  <div class="btns"><button id="lbClose">Stäng</button></div>
+</div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -476,13 +489,14 @@ let clock=0; const timers=[];
 const wait=s=>new Promise(r=>timers.push({t:clock+s,r}));
 
 /* ---------- UI ---------- */
-const S={att:'P',left:6,kingMode:false,phase:'',px:0,pb:0,label:null,flat:false};
+const S={att:'P',left:6,total:6,throws:0,kingMode:false,phase:'',px:0,pb:0,label:null,flat:false};
+const batonsFor=n=>n===0?2:n===1?4:6;   // öppning 2-4-6
 let toastT=0;
 function toast(t){ if(window.KUBB_LOG) window.KUBB_LOG(t); $('toast').textContent=t; $('toast').style.opacity=1; toastT=clock+2.2; }
 function hint(t){ const h=$('hint'); if(t){h.textContent=t; h.classList.remove('hidden');} else h.classList.add('hidden'); }
 function hud(){
   $('turn').textContent=S.label||(S.att==='P'?'Din tur':'Motståndarens tur');
-  $('batons').textContent='●'.repeat(S.left)+'○'.repeat(6-S.left);
+  $('batons').textContent='●'.repeat(S.left)+'○'.repeat(Math.max(0,S.total-S.left));
   const n=h=>kubbs.filter(k=>k.half===h&&!k.down).length;
   $('score').innerHTML='Din sida: <b>'+n('P')+'</b> kubbar<br>Motståndaren: <b>'+n('A')+'</b> kubbar';
   const tgt=other(S.att), human=S.att==='P'&&!AUTO&&S.phase==='baton';
@@ -631,7 +645,7 @@ function aiKubb(s,anchor){
   const n=diff.a/0.04, tx=anchor.x+gauss()*0.16*n, d=(HB-0.2)+0.9+gauss()*0.25*n, yaw=Math.atan2(tx,d);
   return {x:0,dx:Math.sin(yaw),dz:-s*Math.cos(yaw),range:d};
 }
-const LEFT=()=>({w:'P',why:'En spelare lämnade spelet.'});
+const LEFT=()=>({w:'P',left:true,why:'En spelare lämnade spelet.'});
 async function throwIn(att,list){
   const s=sgn(att), tgt=other(att), human=att==='P'&&!AUTO, z0=s*(HB-0.2);
   S.phase='in'; hud(); setCam(att,z0);
@@ -694,18 +708,19 @@ async function throwIn(att,list){
   return null;
 }
 
-async function turn(att){
+async function turn(att,nb){
   const tgt=other(att), s=sgn(att), human=att==='P'&&!AUTO;
-  S.att=att; S.left=6; S.kingMode=false; mpLabel(null);
-  toast(MP?(MP.seats.length>2?'Ert lags tur':'Din tur'):att==='P'?'Din tur':'Motståndarens tur');
+  nb=nb||6; S.att=att; S.left=nb; S.total=nb; S.kingMode=false; mpLabel(null);
+  if(nb<6) toast('Öppning 2-4-6: '+nb+' pinnar den här omgången');
+  else toast(MP?(MP.seats.length>2?'Ert lags tur':'Din tur'):att==='P'?'Din tur':'Motståndarens tur');
   if(pending.length){ const r=await throwIn(att,pending.splice(0)); if(r) return r; }
   S.phase='baton';
   const adv=kubbs.filter(k=>k.half===att&&k.type==='field'&&!k.down);
   const line=adv.length?Math.max(0.5,Math.min.apply(null,adv.map(k=>Math.abs(k.body.position.z)))):HB-0.2;
   if(adv.length) toast(att==='P'?'Fördel: kast från närmaste fältkubb':'Motståndaren kastar från fältkubbslinjen');
-  for(let b=6;b>0;b--){
+  for(let b=nb;b>0;b--){
     const st=kubbs.filter(k=>k.half===tgt&&!k.down), kingMode=!st.length, z0=s*(kingMode?HB-0.2:line);
-    const who=MP?mpWho(6-b):null;
+    const who=MP?mpWho(nb-b):null;
     S.left=b; S.kingMode=kingMode; hud(); setCam(att,z0);
     let t=null, by=null;
     if(MP&&who!==MP.me){ mpLabel('Din lagkamrat kastar'); hint('Din lagkamrat kastar …'); setCam('A',0); t=await mpAsk(who,-1,z0,1.2,9.6); if(!t) return LEFT(); by=MP.seats[who]; }
@@ -716,7 +731,7 @@ async function turn(att){
     } else { hint(null); await wait(0.9); t=aiBaton(att,z0,st); }
     if(MP&&MP.gone) return LEFT();
     const zt=typeof t.z==='number'?t.z:z0;
-    mpThrow(-1,t,zt,by); addB(baton); S.left=b-1; hud();
+    mpThrow(-1,t,zt,by); addB(baton); S.left=b-1; if(att==='P') S.throws++; hud();
     await throwBaton(t,t.x,zt,t.dx,t.dz,t.range);
     remB(baton);
     const r=evaluate(att,kingMode); hud();
@@ -909,7 +924,7 @@ function beginMP(seats,g){
   const me=seats.indexOf(myPeer); if(me<0) return;
   mpWant=false; lastG=g; mpStatus(''); $('mpLinkRow').classList.add('hidden'); mpButtons();
   const q=[]; let waiter=null;
-  MP={seats,g,me,team:me%2,mates:seats.map((_,i)=>i).filter(i=>i%2===me%2),turnTeam:0,myTurns:0,lastN:0,lastTh:{},seen:{},plWait:null,inWait:null,gone:false,thId:0,
+  MP={seats,g,me,team:me%2,mates:seats.map((_,i)=>i).filter(i=>i%2===me%2),turnTeam:0,turnNo:0,myTurns:0,lastN:0,lastTh:{},seen:{},plWait:null,inWait:null,gone:false,thId:0,
     push(ev){ if(waiter){ const w=waiter; waiter=null; w(ev); } else q.push(ev); },
     next(){ return q.length?Promise.resolve(q.shift()):new Promise(r=>{ waiter=r; }); }};
   room.presence({mp:2,g,seats,st:null,th:null,pl:null,in:null}).catch(()=>{});
@@ -925,7 +940,7 @@ function mpThrow(k,t,z,by){
 function mpState(extra){
   if(!MP) return 0;
   const n=MP.lastN=MP.lastN+1;
-  const st=Object.assign({n,left:S.left,kg:[r3(king.body.position.x),r3(king.body.position.z)],
+  const st=Object.assign({n,left:S.left,tot:S.total,kg:[r3(king.body.position.x),r3(king.body.position.z)],
     k:kubbs.map(k=>{ const d=k.down||!k.inWorld; return [d?0:r3(k.body.position.x),d?0:r3(k.body.position.z),k.half==='P'?0:1,k.type==='base'?0:1,d?1:0]; })},extra||{});
   room.presence({st}).catch(()=>{});
   return n;
@@ -950,6 +965,7 @@ function applyState(s,mir){
     else { standUp(k,f*a[0],f*a[1]); if(k.type==='base') k.home={x:f*a[0],z:f*a[1]}; }
   });
   if(s.kg) standUp(king,f*s.kg[0],f*s.kg[1]);
+  if(typeof s.tot==='number') S.total=clamp(s.tot,1,6);
   if(typeof s.left==='number') S.left=clamp(s.left,0,6);
   hud();
 }
@@ -963,7 +979,8 @@ function mpAnim(o,x,z,dx,dz,r,flat){
 async function listenTurn(){
   const mine=MP.turnTeam===MP.team, big=MP.seats.length>2, myId=MP.seats[MP.me];
   const idle=()=>{ S.att=mine?'P':'A'; mpLabel(mine?'Din lagkamrat kastar':big?'Motståndarnas tur':'Motståndarens tur'); hint(mine?'Din lagkamrat spelar …':big?'Motståndarna spelar …':'Motståndaren spelar …'); setCam('A',0); };
-  S.left=6; S.phase='baton'; S.kingMode=false; idle();
+  S.left=S.total=batonsFor(MP.turnNo); S.phase='baton'; S.kingMode=false; idle();
+  let used=0;
   toast(mine?'Ert lags tur':big?'Motståndarnas tur':'Motståndarens tur');
   for(;;){
     const ev=await MP.next();
@@ -976,7 +993,9 @@ async function listenTurn(){
       continue;
     }
     const s=ev.d; applyState(s,mir);
+    if(!mir&&typeof s.tot==='number'&&typeof s.left==='number') used=Math.max(used,s.tot-s.left);
     if(s.over){
+      S.throws+=used;
       const win=(s.over.w===0)!==mir, c=s.over.c;
       return {w:win?'P':'A',why:mir?(win?(c==='kubb'?'Motståndarens inkastade kubb fällde kungen!':'Motståndaren fällde kungen för tidigt!'):'Motståndaren fällde kungen.')
         :(win?'Ert lag fällde kungen!':(c==='kubb'?'En inkastad kubb fällde kungen.':'Kungen fälldes för tidigt.'))};
@@ -1004,20 +1023,20 @@ async function listenTurn(){
       }
       hud(); idle(); room.presence({pl:{n:s.n,p}}).catch(()=>{});
     }
-    if(s.turn===1){ pending=(s.pend||[]).map(i=>kubbs[i]).filter(Boolean); hint(null); MP.turnTeam^=1; return null; }
+    if(s.turn===1){ pending=(s.pend||[]).map(i=>kubbs[i]).filter(Boolean); hint(null); MP.turnTeam^=1; MP.turnNo++; S.throws+=used; return null; }
   }
 }
 async function gameMP(){
-  running=true; pending=[]; remB(baton); S.px=0; S.pb=0;
+  running=true; pending=[]; remB(baton); S.px=0; S.pb=0; S.throws=0; gameMode=MP.seats.length>2?'Online 2 mot 2':'Online 1 mot 1';
   for(const k of kubbs){ k.half=k.home0.z>0?'P':'A'; k.type='base'; k.home={x:k.home0.x,z:k.home0.z}; standUp(k,k.home.x,k.home.z); }
   standUp(king,0,0); S.att=MP.team===0?'P':'A'; S.left=6; hud();
   let r=null;
   if(MP.me===0) mpState({});
   for(;;){
     if(MP.turnTeam===MP.me){
-      r=await turn('P');
+      r=await turn('P',batonsFor(MP.turnNo));
       if(r){ if(!MP.gone) mpState({over:{w:r.w==='P'?0:1,c:r.c||''}}); break; }
-      mpState({turn:1,pend:pending.map(k=>kubbs.indexOf(k))}); pending=[]; MP.myTurns++; MP.turnTeam^=1;
+      mpState({turn:1,pend:pending.map(k=>kubbs.indexOf(k))}); pending=[]; MP.myTurns++; MP.turnTeam^=1; MP.turnNo++;
     } else { r=await listenTurn(); if(r) break; if(MP.turnTeam!==MP.me) pending=[]; }
   }
   const big=MP.seats.length>2; MP=null; S.label=null;
@@ -1026,31 +1045,62 @@ async function gameMP(){
   finish(r,big);
 }
 
+/* ---------- Topplista (sparas i den här webbläsaren) ---------- */
+let gameMode='', diffName='normal';
+const store={ get(k,d){ try{ const v=JSON.parse(localStorage.getItem(k)); return v==null?d:v; }catch(_){ return d; } }, set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(_){} } };
+function playerName(){ const n=String($('pname').value||'').trim().slice(0,16); return n||'Spelare'; }
+function lbRecord(r){
+  const st=store.get('kubb3d.stats',{w:0,l:0});
+  if(r.w==='P') st.w=(st.w||0)+1; else st.l=(st.l||0)+1;
+  store.set('kubb3d.stats',st);
+  if(r.w!=='P'||r.left||!S.throws) return false;
+  const lb=store.get('kubb3d.lb',[]); if(!Array.isArray(lb)) return false;
+  lb.push({n:playerName(),m:gameMode,t:S.throws,d:new Date().toISOString().slice(0,10)});
+  lb.sort((a,b)=>a.t-b.t); store.set('kubb3d.lb',lb.slice(0,50)); return true;
+}
+function lbShow(){
+  const lb=store.get('kubb3d.lb',[]), st=store.get('kubb3d.stats',{w:0,l:0}), tb=$('lbBody');
+  tb.textContent='';
+  (Array.isArray(lb)?lb:[]).slice(0,15).forEach((e,i)=>{
+    const tr=document.createElement('tr');
+    [i+1,e.n,e.m,e.t,e.d].forEach(v=>{ const td=document.createElement('td'); td.textContent=String(v==null?'':v); tr.appendChild(td); });
+    tb.appendChild(tr);
+  });
+  $('lbEmpty').classList.toggle('hidden',!!(lb&&lb.length));
+  $('lbStats').textContent='Vinster: '+(st.w||0)+' · Förluster: '+(st.l||0);
+  $('lbOv').classList.remove('hidden');
+}
 let running=false;
 async function game(){
   running=true; pending=[]; remB(baton); S.px=0; S.pb=0; S.label=null;
   for(const k of kubbs){ k.half=k.home0.z>0?'P':'A'; k.type='base'; k.home={x:k.home0.x,z:k.home0.z}; standUp(k,k.home.x,k.home.z); }
   standUp(king,0,0);
   let att='P',r=null;
-  while(!(r=await turn(att))) att=other(att);
+  let tn=0; S.throws=0; gameMode='Dator – '+({easy:'Lätt',normal:'Normal',hard:'Svår'}[diffName]||'Normal');
+  while(!(r=await turn(att,batonsFor(tn++)))) att=other(att);
   finish(r);
 }
 async function finish(r,big){
   running=false; hint(null); hud(); aim=null; place=null; aimLine.visible=ring.visible=false; showAimUI(false);
   await wait(1.2);
   $('endT').textContent=r.w==='P'?(big?'Ni vann! 👑':'Du vann! 👑'):(big?'Ni förlorade':'Du förlorade');
-  $('endP').textContent=r.why;
+  const saved=AUTO?false:lbRecord(r);
+  $('endP').textContent=r.why+(S.throws?' · Kastade pinnar: '+S.throws:'')+(saved?' · Sparat på topplistan.':'');
   $('endOv').classList.remove('hidden');
   if(window.KUBB_LOG) window.KUBB_LOG('END '+r.w+' '+r.why);
 }
 function start(d){
   if(MP) return; if(mpWant) mpCancel();
-  diff=DIFF[d]||DIFF.normal;
+  diff=DIFF[d]||DIFF.normal; diffName=DIFF[d]?d:'normal';
   $('startOv').classList.add('hidden'); $('endOv').classList.add('hidden');
   try{ if(!actx){const AC=window.AudioContext||window.webkitAudioContext; if(AC) actx=new AC();} }catch(_){}
   if(!running) game();
 }
 document.querySelectorAll('[data-d]').forEach(b=>b.addEventListener('click',()=>start(b.dataset.d)));
+$('lbBtn').addEventListener('click',lbShow); $('lbBtn2').addEventListener('click',lbShow);
+$('lbClose').addEventListener('click',()=>$('lbOv').classList.add('hidden'));
+$('pname').value=store.get('kubb3d.name','')||'';
+$('pname').addEventListener('input',()=>store.set('kubb3d.name',String($('pname').value).slice(0,16)));
 $('modeBtn').addEventListener('click',()=>{ if(aim&&!aim.charging) setMode(!S.flat); });
 $('mpBtn').addEventListener('click',()=>mpJoin(2));
 $('mpBtn4').addEventListener('click',()=>mpJoin(4));
