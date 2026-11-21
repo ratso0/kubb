@@ -400,7 +400,7 @@ function makeObj(w,h,mass,mesh,sleep){
   const body=new CANNON.Body({mass,material:mWood,angularDamping:0.25,linearDamping:0.03});
   body.addShape(new CANNON.Box(new CANNON.Vec3(w/2,h/2,w/2)));
   body.allowSleep=sleep; body.sleepSpeedLimit=0.12; body.sleepTimeLimit=0.35;
-  body.addEventListener('collide',e=>{try{const v=Math.abs(e.contact.getImpactVelocityAlongNormal()); if(v>1.2)knock(Math.min(1,v/8));}catch(_){}} );
+  body.addEventListener('collide',e=>{try{const v=Math.abs(e.contact.getImpactVelocityAlongNormal()); if(v>1.2){ const l=Math.min(1,v/8); knock(l); if(MP&&active) MP.kn=Math.max(MP.kn||0,l); } }catch(_){}} );
   mesh.traverse(m=>{m.castShadow=true; m.receiveShadow=true;}); scene.add(mesh);
   return {body,mesh,w,h,inWorld:false};
 }
@@ -440,18 +440,23 @@ function standUp(k,x,z){
 }
 const UP=new CANNON.Vec3(0,1,0);
 function upright(o){ return !o.tipped&&o.body.quaternion.vmult(UP).y>0.75; }
+// Närmaste lediga plats på planhalvan: aldrig i en annan kubb, kungen eller en hörnpinne
+function spotOk(k,x,z,s){
+  for(const o of all){
+    if(o===k||o===baton||!o.inWorld||o.down) continue;
+    if(Math.hypot(x-o.body.position.x,z-o.body.position.z)<(o===king?0.4:0.11)) return false;
+  }
+  for(const cx of [-FW/2,FW/2]) for(const cz of [0,s*HB]) if(Math.hypot(x-cx,z-cz)<0.34) return false;
+  return true;
+}
 function freeSpot(k,x,z,half){
-  const s=sgn(half);
-  for(let i=0;i<14;i++){
-    let moved=false;
-    for(const o of all){
-      if(o===k||o===baton||!o.inWorld||o.down) continue;
-      const min=o===king?0.4:0.15; let dx=x-o.body.position.x, dz=z-o.body.position.z, d=Math.hypot(dx,dz);
-      if(d<min){ if(d<1e-3){dx=1;dz=0;d=1;} x=o.body.position.x+dx/d*min; z=o.body.position.z+dz/d*min; moved=true; }
-    }
-    x=clamp(x,-FW/2+0.1,FW/2-0.1); z=s*clamp(s*z,0.15,HB-0.1);
-    for(const cx of [-FW/2,FW/2]) for(const cz of [0,s*HB]){ const dx=x-cx, dz=z-cz, d=Math.hypot(dx,dz); if(d<0.34){ x=cx+(cx<0?1:-1)*0.26; z=cz+(cz===0?s:-s)*0.24; moved=true; } }
-    if(!moved) break;
+  const s=sgn(half), X=FW/2-0.1;
+  x=clamp(x,-X,X); z=s*clamp(s*z,0.15,HB-0.1);
+  if(spotOk(k,x,z,s)) return [x,z];
+  for(let r=0.03;r<3;r+=0.03) for(let i=0;i<24;i++){
+    const a=i/24*6.2832, px=x+Math.cos(a)*r, pz=z+Math.sin(a)*r;
+    if(Math.abs(px)>X||s*pz<0.15||s*pz>HB-0.1) continue;
+    if(spotOk(k,px,pz,s)) return [px,pz];
   }
   return [x,z];
 }
@@ -900,7 +905,7 @@ function onPeers(ch){
       if(!o||(MP.seen[id]&&!ok)){ mpGone(); return; }
       if(!ok) continue;
       MP.seen[id]=true;
-      if(pr.th&&pr.th.id>(MP.lastTh[id]||0)){ MP.lastTh[id]=pr.th.id; MP.push({t:'th',d:pr.th,from:i}); }
+      if(pr.fr&&pr.fr.id){ const key=pr.fr.id*100000+(+pr.fr.f||0); if(key>(MP.lastTh[id]||0)){ MP.lastTh[id]=key; if(MP.turnTeam!==MP.me) mpOnFrame(pr.fr,i); } }
       if(pr.st&&pr.st.n>MP.lastN){ MP.lastN=pr.st.n; MP.push({t:'st',d:pr.st,from:i}); }
       const iw=MP.inWait, pw=MP.plWait;
       if(iw&&iw.peer===id&&pr.in&&pr.in.n===iw.n){ MP.inWait=null; iw.res(pr.in); }
@@ -927,21 +932,63 @@ function beginMP(seats,g){
   MP={seats,g,me,team:me%2,mates:seats.map((_,i)=>i).filter(i=>i%2===me%2),turnTeam:0,turnNo:0,myTurns:0,lastN:0,lastTh:{},seen:{},plWait:null,inWait:null,gone:false,thId:0,
     push(ev){ if(waiter){ const w=waiter; waiter=null; w(ev); } else q.push(ev); },
     next(){ return q.length?Promise.resolve(q.shift()):new Promise(r=>{ waiter=r; }); }};
-  room.presence({mp:2,g,seats,st:null,th:null,pl:null,in:null}).catch(()=>{});
+  room.presence({mp:2,g,seats,st:null,th:null,fr:null,pl:null,in:null}).catch(()=>{});
   $('startOv').classList.add('hidden'); $('endOv').classList.add('hidden');
   try{ if(!actx){const AC=window.AudioContext||window.webkitAudioContext; if(AC) actx=new AC();} }catch(_){}
   gameMP();
   onPeers({peers:room.peers()});
 }
-function mpThrow(k,t,z,by){
+// Den som kastar skickar hela förloppet (läget för alla kroppar som rör sig) ~16 ggr/s; övriga visar exakt det i stället för att räkna själva
+function mpThrow(){
   if(!MP) return;
-  room.presence({th:{id:++MP.thId,k,by:by||null,m:t.flat?1:0,x:r3(t.x),z:r3(z),dx:r5(t.dx),dz:r5(t.dz),r:r3(t.range)}}).catch(()=>{});
+  MP.thId++; MP.frSeq=0; MP.frT=1; MP.moved=[]; MP.kn=0;
+}
+function mpFrame(end){
+  const b=[];
+  for(const o of MP.moved){
+    if(!o.inWorld) continue;
+    const q=o.body.position, r=o.body.quaternion, i=o===baton?-1:o===king?10:kubbs.indexOf(o);
+    b.push([i,r3(q.x),r3(q.y),r3(q.z),r3(r.x),r3(r.y),r3(r.z),r3(r.w)]);
+  }
+  room.presence({fr:{id:MP.thId,f:++MP.frSeq,e:end?1:0,k:r3(MP.kn||0),b}}).catch(()=>{});
+  MP.kn=0;
+}
+// mottagare: ta emot en bildruta av någon annans kast
+function mpOnFrame(fr,seat){
+  if(!fr||!Array.isArray(fr.b)) return;
+  const mir=(seat%2)!==MP.team;
+  if(!MP.replay||MP.replay.id!==fr.id||MP.replay.seat!==seat) MP.replay={id:fr.id,seat,tg:new Map()};
+  const R=MP.replay; R.t=clock;
+  for(const a of fr.b){
+    if(!Array.isArray(a)||a.length<8) continue;
+    const o=a[0]===-1?baton:a[0]===10?king:kubbs[a[0]]; if(!o) continue;
+    const t=mir?{x:-a[1],y:a[2],z:-a[3],q:[a[6],a[7],-a[4],-a[5]]}:{x:a[1],y:a[2],z:a[3],q:[a[4],a[5],a[6],a[7]]};
+    if(!o.inWorld||!R.tg.has(o)){
+      if(o!==baton&&o!==king){ o.body.collisionFilterGroup=1; o.body.collisionFilterMask=1; }
+      if(!o.inWorld){ addB(o); o.body.position.set(t.x,t.y,t.z); o.body.quaternion.set(t.q[0],t.q[1],t.q[2],t.q[3]); }
+    }
+    R.tg.set(o,t);
+  }
+  if(fr.k>0.12) knock(Math.min(1,+fr.k));
+  if(fr.e) R.end=true;
+}
+function mpReplayTick(dt){
+  const R=MP&&MP.replay; if(!R) return;
+  const k=1-Math.exp(-dt*20);
+  R.tg.forEach((t,o)=>{
+    if(!o.inWorld) return;
+    const b=o.body, p=b.position;
+    p.set(p.x+(t.x-p.x)*k,p.y+(t.y-p.y)*k,p.z+(t.z-p.z)*k);
+    const q=b.quaternion, sg=(q.x*t.q[0]+q.y*t.q[1]+q.z*t.q[2]+q.w*t.q[3])<0?-1:1;
+    q.set(q.x+(sg*t.q[0]-q.x)*k,q.y+(sg*t.q[1]-q.y)*k,q.z+(sg*t.q[2]-q.z)*k,q.w+(sg*t.q[3]-q.w)*k); q.normalize();
+    b.velocity.set(0,0,0); b.angularVelocity.set(0,0,0); b.sleep();
+  });
 }
 function mpState(extra){
   if(!MP) return 0;
   const n=MP.lastN=MP.lastN+1;
   const st=Object.assign({n,left:S.left,tot:S.total,kg:[r3(king.body.position.x),r3(king.body.position.z)],
-    k:kubbs.map(k=>{ const d=k.down||!k.inWorld; return [d?0:r3(k.body.position.x),d?0:r3(k.body.position.z),k.half==='P'?0:1,k.type==='base'?0:1,d?1:0]; })},extra||{});
+    k:kubbs.map(k=>{ const d=!k.inWorld?1:k.down?2:0; return [d?0:r3(k.body.position.x),d?0:r3(k.body.position.z),k.half==='P'?0:1,k.type==='base'?0:1,d]; })},extra||{});
   room.presence({st}).catch(()=>{});
   return n;
 }
@@ -961,7 +1008,8 @@ function applyState(s,mir){
   (s.k||[]).forEach((a,i)=>{
     const k=kubbs[i]; if(!k||!a) return;
     k.half=(a[2]===0)!==mir?'P':'A'; k.type=a[3]===0?'base':'field';
-    if(a[4]){ remB(k); k.down=true; }
+    if(a[4]===2){ k.down=true; }   // ligger inkastad på planen – visas via kastförloppet
+    else if(a[4]){ remB(k); k.down=true; }
     else { standUp(k,f*a[0],f*a[1]); if(k.type==='base') k.home={x:f*a[0],z:f*a[1]}; }
   });
   if(s.kg) standUp(king,f*s.kg[0],f*s.kg[1]);
@@ -986,12 +1034,8 @@ async function listenTurn(){
     const ev=await MP.next();
     if(ev.t==='left') return LEFT();
     const mir=(ev.from%2)!==MP.team, f=mir?-1:1;
-    if(ev.t==='th'){
-      const d=ev.d, o=d.k<0?baton:kubbs[d.k]; if(!o||d.by===myId) continue;
-      if(o!==baton&&o.inWorld&&!o.down) continue;
-      await mpAnim(o,f*d.x,f*d.z,f*d.dx,f*d.dz,d.r,d.m===1);
-      continue;
-    }
+    if(ev.t!=='st') continue;
+    if(MP.replay){ await wait(0.14); MP.replay=null; }
     const s=ev.d; applyState(s,mir);
     if(!mir&&typeof s.tot==='number'&&typeof s.left==='number') used=Math.max(used,s.tot-s.left);
     if(s.over){
@@ -1009,8 +1053,7 @@ async function listenTurn(){
         else { hint(a.k<0?'Din tur att kasta':'Din tur – kasta in kubben på motståndarens planhalva'); if(o!==baton) remB(o); t=await playerAim(o,z0,+a.min||1,+a.max||9.6); }
         const zt=typeof t.z==='number'?t.z:z0;
         room.presence({in:{n:s.n,m:t.flat?1:0,x:r3(t.x),z:r3(zt),dx:r5(t.dx),dz:r5(t.dz),r:r3(t.range)}}).catch(()=>{});
-        idle();
-        await mpAnim(o,t.x,zt,t.dx,t.dz,t.range,!!t.flat);
+        idle(); if(o!==baton) o.mesh.visible=false; else baton.mesh.visible=false;
       }
     }
     if(mir&&s.place&&s.place.length&&s.placeBy===myId){
@@ -1138,8 +1181,13 @@ function tick(dt){
     }
     a.calm=moving?0:a.calm+dt;
     const p=a.o.body.position;
-    if((a.t>0.7&&a.calm>0.4)||a.t>6.5||Math.abs(p.x)>12||Math.abs(p.z)>14){ active=null; a.res(); }
+    if(MP&&MP.moved){
+      for(const o of all) if(o.inWorld&&(o===a.o||o.body.sleepState!==CANNON.Body.SLEEPING)&&MP.moved.indexOf(o)<0) MP.moved.push(o);
+      MP.frT+=dt; if(MP.frT>=0.06){ MP.frT=0; mpFrame(false); }
+    }
+    if((a.t>0.7&&a.calm>0.4)||a.t>6.5||Math.abs(p.x)>12||Math.abs(p.z)>14){ active=null; if(MP&&MP.moved) mpFrame(true); a.res(); }
   }
+  mpReplayTick(dt);
   for(const o of all) if(o.inWorld){
     if(active&&o!==baton&&!o.tipped&&o.body.sleepState!==CANNON.Body.SLEEPING&&o.body.quaternion.vmult(UP).y<0.35) o.tipped=true;
     o.mesh.position.copy(o.body.position); o.mesh.quaternion.copy(o.body.quaternion);
@@ -1164,7 +1212,11 @@ function frame(ms){ const raw=(ms-last)/1000, dt=clamp(raw,0.001,0.034); last=ms
 for(const k of kubbs){ k.half=k.home.z>0?'P':'A'; k.type='base'; standUp(k,k.home.x,k.home.z); }
 standUp(king,0,0); hud();
 (function(){ const seen=new Set(); scene.traverse(o=>{ const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[]; ms.forEach(m=>{ if(seen.has(m)||!m.color||m.userData.noConv) return; seen.add(m); m.color.convertSRGBToLinear(); }); }); })();
-window.__kubb={start,tick,mpJoin,mpPick};
+window.__kubb={start,tick,mpJoin,mpPick,
+  human:()=>aim?{o:aim.o===baton?'b':'k',z0:aim.z0,min:aim.min,max:aim.max}:place?{o:'p'}:null,
+  shoot:t=>{ if(!aim) return; const a=aim; aim=null; aimLine.visible=ring.visible=false; showAimUI(false); a.res({x:t.x||0,z:a.z0,dx:t.dx,dz:t.dz,range:t.range,flat:!!t.flat}); },
+  put:(x,z)=>{ if(!place) return; const pl=place; place=null; pl.res(freeSpot(pl.k,x,z,'P')); },
+  dbg:()=>({busy:!!active,phase:S.phase,k:kubbs.map(k=>({x:k.body.position.x,y:k.body.position.y,z:k.body.position.z,up:k.body.quaternion.vmult(UP).y,half:k.half,type:k.type,down:!!k.down,inW:k.inWorld}))})};
 requestAnimationFrame(frame);
 })();
 </script>
