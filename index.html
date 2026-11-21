@@ -25,7 +25,9 @@
   button:hover{background:#f6d591}
   .mv{position:fixed;bottom:16px;flex:none;min-width:0;width:58px;height:58px;border-radius:50%;font-size:22px;padding:0;background:rgba(20,30,20,.62);color:#fff;touch-action:none}
   .mv:hover{background:rgba(20,30,20,.8)}
-  #mvL{left:16px}#mvR{right:16px}
+  #modeBtn{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);flex:none;min-width:0;font-size:14px;padding:9px 16px;border-radius:20px;background:rgba(20,30,20,.72);color:#fff}
+  #modeBtn:hover{background:rgba(20,30,20,.9)}
+  #mvL{left:16px}#mvR{right:16px}#mvU{left:16px;bottom:84px}#mvD{right:16px;bottom:84px}
   .hidden{display:none!important}
 </style>
 </head>
@@ -38,14 +40,17 @@
 <div id="toast"></div>
 <div id="hint" class="pill hidden"></div>
 <div id="power" class="hidden"><div id="pfill"></div></div>
-<button id="mvL" class="mv hidden" aria-label="Flytta vänster">◀</button><button id="mvR" class="mv hidden" aria-label="Flytta höger">▶</button>
+<button id="modeBtn" class="hidden">Kast: Båge</button>
+<button id="mvL" class="mv hidden" aria-label="Flytta vänster">◀</button><button id="mvR" class="mv hidden" aria-label="Flytta höger">▶</button><button id="mvU" class="mv hidden" aria-label="Gå framåt">▲</button><button id="mvD" class="mv hidden" aria-label="Gå bakåt">▼</button>
 
 <div id="startOv" class="overlay"><div class="card">
   <h1>KUBB 3D</h1>
   <p>Fäll motståndarens kubbar – och sist kungen.</p>
   <ul>
     <li><b>Sikta</b> med musen/fingret, <b>håll in</b> för att ladda kraft, <b>släpp</b> för att kasta. Ringen visar var pinnen landar.</li>
-    <li><b>Flytta dig</b> längs kastlinjen med A/D, piltangenterna eller ◀ ▶.</li>
+    <li><b>Flytta dig</b> i sidled med A/D eller ◀ ▶, och bakåt/framåt med S/W eller ▼ ▲ (aldrig framför kastlinjen).</li>
+    <li><b>Kastläge:</b> välj <b>Båge</b> (pinnen roterar) eller <b>Spräng</b> (rakt och hårt som en torped) med knappen eller F.</li>
+    <li><b>2 mot 2:</b> lagkamraterna kastar varannan pinne.</li>
     <li>6 kastpinnar per omgång. Fällda kubbar kastas in på din planhalva som <b>fältkubbar</b>. Alla kastas in först, sedan reses de. Hamnar en kubb utanför får man ett omkast – missar man igen placerar motståndaren den.</li>
     <li>Fältkubbar måste fällas <b>före</b> baskubbarna.</li>
     <li>Missar motståndaren dina fältkubbar får du kasta från den närmaste.</li>
@@ -54,8 +59,9 @@
   </ul>
   <p style="margin:0 0 8px">Spela mot datorn – välj svårighetsgrad:</p>
   <div class="btns"><button data-d="easy">Lätt</button><button data-d="normal">Normal</button><button data-d="hard">Svår</button></div>
-  <p style="margin:16px 0 8px">Eller spela mot en annan spelare:</p>
-  <div class="btns"><button id="mpBtn">Spela online</button></div>
+  <p style="margin:16px 0 8px">Eller spela mot andra över nätet:</p>
+  <div class="btns"><button id="mpBtn">Online 1 mot 1</button><button id="mpBtn4">Online 2 mot 2</button></div>
+  <div id="mpTeams" class="btns hidden" style="margin-top:8px"><button id="mpT0">Gå med i Lag 1</button><button id="mpT1">Gå med i Lag 2</button></div>
   <p id="mpStat" style="margin:10px 0 0;min-height:1.4em"></p>
   <div id="mpLinkRow" class="btns hidden" style="margin-top:8px"><input id="mpLink" readonly style="flex:3;min-width:0;font:inherit;font-size:14px;padding:10px;border-radius:10px;border:0;background:#eef2ea;color:#1c261c"><button id="mpCopy" style="flex:1">Kopiera</button></div>
 </div></div>
@@ -68,12 +74,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script>
 (function(){
 'use strict';
@@ -105,15 +105,26 @@ const SUN=new THREE.Vector3(-0.55,0.62,0.56).normalize();
 scene.add(new THREE.HemisphereLight(0xdcebff,0x7f9f65,0.85));
 const sun=new THREE.DirectionalLight(0xfff3e0,2.3);
 sun.position.copy(SUN).multiplyScalar(22); sun.castShadow=true;
-sun.shadow.mapSize.set(MOBILE?2048:4096,MOBILE?2048:4096);
+sun.shadow.mapSize.set(2048,2048);
 sun.shadow.camera.left=-9; sun.shadow.camera.right=9; sun.shadow.camera.top=10; sun.shadow.camera.bottom=-10;
 sun.shadow.camera.near=1; sun.shadow.camera.far=50; sun.shadow.bias=-0.0003; sun.shadow.normalBias=0.012; sun.shadow.radius=3;
 scene.add(sun);
 const ANISO=renderer.capabilities.getMaxAnisotropy()||1;
 const windU={value:0};
+canvas.addEventListener('webglcontextlost',e=>{ e.preventDefault(); },false);
 function canvasTex(w,h,draw){
-  const cv=document.createElement('canvas'); cv.width=w; cv.height=h; draw(cv.getContext('2d'),w,h);
-  const t=new THREE.CanvasTexture(cv); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.encoding=THREE.sRGBEncoding; t.anisotropy=ANISO; return t;
+  // Ritas på en vanlig (CPU-)canvas och kopieras direkt till ren bilddata, så texturen inte kan bli svart om grafikkortet tappar canvasen
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  const x=cv.getContext('2d',{willReadFrequently:true});
+  let t=null;
+  try{
+    x.save(); x.translate(0,h); x.scale(1,-1); draw(x,w,h); x.restore();
+    const d=x.getImageData(0,0,w,h).data;
+    if(!d||d.length!==w*h*4) throw 0;
+    t=new THREE.DataTexture(new Uint8Array(d.buffer.slice(0)),w,h,THREE.RGBAFormat,THREE.UnsignedByteType);
+    t.generateMipmaps=true; t.minFilter=THREE.LinearMipmapLinearFilter; t.magFilter=THREE.LinearFilter; t.needsUpdate=true;
+  }catch(_){ t=new THREE.CanvasTexture(cv); }
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.encoding=THREE.sRGBEncoding; t.anisotropy=Math.min(ANISO,8); return t;
 }
 function strokes(x,w,h,n,hue0,hue1,l0,l1,len,alpha){
   for(let i=0;i<n;i++){
@@ -359,20 +370,7 @@ let animateWorld=()=>{}, tallGrass=null;
   };
 })();
 
-/* ---------- Post-processing ---------- */
-let composer=null;
-(function(){
-  try{
-    if(MOBILE||!THREE.EffectComposer||!THREE.UnrealBloomPass||!renderer.capabilities.isWebGL2) return;
-    if(!renderer.extensions.get('EXT_color_buffer_float')&&!renderer.extensions.get('EXT_color_buffer_half_float')) return;
-    const rt=new THREE.WebGLMultisampleRenderTarget(4,4,{format:THREE.RGBAFormat,type:THREE.HalfFloatType,stencilBuffer:true});
-    composer=new THREE.EffectComposer(renderer,rt);
-    composer.addPass(new THREE.RenderPass(scene,camera));
-    composer.addPass(new THREE.ShaderPass({uniforms:{tDiffuse:{value:null},exposure:{value:EXPO}},
-      vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-      fragmentShader:'uniform sampler2D tDiffuse; uniform float exposure; varying vec2 vUv;\nvec3 fit(vec3 v){ vec3 a=v*(v+0.0245786)-0.000090537; vec3 b=v*(0.983729*v+0.4329510)+0.238081; return a/b; }\nvoid main(){ vec3 c=texture2D(tDiffuse,vUv).rgb*exposure/0.6;\nc=mat3(0.59719,0.07600,0.02840,0.35458,0.90834,0.13383,0.04823,0.01566,0.83777)*c; c=fit(c);\nc=mat3(1.60475,-0.10208,-0.00327,-0.53108,1.10813,-0.07276,-0.07367,-0.00605,1.07602)*c; c=clamp(c,0.0,1.0);\nfloat l=dot(c,vec3(0.2126,0.7152,0.0722)); c=mix(vec3(l),c,0.97);\ngl_FragColor=vec4(pow(c,vec3(1.0/2.2)),1.0); }'}));
-  }catch(e){ composer=null; }
-})();
+const composer=null;
 
 /* ---------- Physics ---------- */
 const world=new CANNON.World();
@@ -459,12 +457,18 @@ function knock(v){
 function rangeOf(v,e,h){ const vy=v*Math.sin(e); return v*Math.cos(e)*(vy+Math.sqrt(vy*vy+2*G*h))/G; }
 function speedFor(range,e,h){ let lo=0.5,hi=30; for(let i=0;i<32;i++){const m=(lo+hi)/2; if(rangeOf(m,e,h)<range)lo=m; else hi=m;} return (lo+hi)/2; }
 let active=null;
-function launch(o,x,z,dx,dz,range,elev,h,spin){
+function launch(o,x,z,dx,dz,range,elev,h,spin,flat){
   const b=o.body, v=speedFor(range,elev,h), vx=v*Math.cos(elev);
   b.position.set(x,h,z); b.velocity.set(dx*vx,v*Math.sin(elev),dz*vx);
-  b.quaternion.setFromVectors(UP,new CANNON.Vec3(dx*0.45,0.89,dz*0.45));
+  // spräng: pinnen pekar i färdriktningen som en torped, utan rotation
+  if(flat) b.quaternion.setFromVectors(UP,new CANNON.Vec3(dx*Math.cos(elev),Math.sin(elev)+0.02,dz*Math.cos(elev)));
+  else b.quaternion.setFromVectors(UP,new CANNON.Vec3(dx*0.45,0.89,dz*0.45));
   b.angularVelocity.set(dz*spin,0,-dx*spin); b.wakeUp();
   return new Promise(res=>{active={o,t:0,calm:0,res};});
+}
+
+function throwBaton(t,x,z,dx,dz,range){
+  const f=!!t.flat; return launch(baton,x,z,dx,dz,range,f?0.09:0.35,f?0.6:0.75,f?0:10,f);
 }
 
 /* ---------- Game clock ---------- */
@@ -472,12 +476,12 @@ let clock=0; const timers=[];
 const wait=s=>new Promise(r=>timers.push({t:clock+s,r}));
 
 /* ---------- UI ---------- */
-const S={att:'P',left:6,kingMode:false,phase:'',px:0};
+const S={att:'P',left:6,kingMode:false,phase:'',px:0,pb:0,label:null,flat:false};
 let toastT=0;
 function toast(t){ if(window.KUBB_LOG) window.KUBB_LOG(t); $('toast').textContent=t; $('toast').style.opacity=1; toastT=clock+2.2; }
 function hint(t){ const h=$('hint'); if(t){h.textContent=t; h.classList.remove('hidden');} else h.classList.add('hidden'); }
 function hud(){
-  $('turn').textContent=S.att==='P'?'Din tur':'Motståndarens tur';
+  $('turn').textContent=S.label||(S.att==='P'?'Din tur':'Motståndarens tur');
   $('batons').textContent='●'.repeat(S.left)+'○'.repeat(6-S.left);
   const n=h=>kubbs.filter(k=>k.half===h&&!k.down).length;
   $('score').innerHTML='Din sida: <b>'+n('P')+'</b> kubbar<br>Motståndaren: <b>'+n('A')+'</b> kubbar';
@@ -501,11 +505,11 @@ const aimLine=new THREE.Mesh(new THREE.BoxGeometry(0.035,0.004,1).translate(0,0,
 const ring=new THREE.Mesh(new THREE.RingGeometry(0.15,0.21,32),new THREE.MeshBasicMaterial({color:0xffd34d,transparent:true,opacity:0.95,side:THREE.DoubleSide,depthTest:false}));
 aimLine.renderOrder=ring.renderOrder=9; aimLine.material.color.setRGB(1.4,1.4,1.4); ring.material.color.setRGB(1.9,1.15,0.08); aimLine.material.userData.noConv=ring.material.userData.noConv=1;
 ring.rotation.x=-Math.PI/2; aimLine.visible=ring.visible=false; scene.add(aimLine,ring);
-let mv=0, place=null;
-function showAimUI(on){ for(const id of ['power','mvL','mvR']) $(id).classList.toggle('hidden',!on); }
+let mv=0, mvz=0, place=null;
+function showAimUI(on){ for(const id of ['power','mvL','mvR','mvU','mvD']) $(id).classList.toggle('hidden',!on); $('modeBtn').classList.toggle('hidden',!(on&&aim&&aim.o===baton)); }
+function setMode(f){ S.flat=!!f; $('modeBtn').textContent=S.flat?'Kast: Spräng 💥':'Kast: Båge'; }
 function playerAim(o,z0,min,max){
-  showAimUI(true);
-  return new Promise(res=>{aim={o,z0,min,max,yaw:0,gp:null,t:0,charging:false,res,cur:null}; o.mesh.visible=true;});
+  return new Promise(res=>{aim={o,z0,min,max,yaw:0,gp:null,t:0,charging:false,res,cur:null}; o.mesh.visible=true; showAimUI(true); });
 }
 function playerPlace(k){
   k.mesh.visible=true; k.mesh.rotation.set(0,0,0); k.mesh.position.set(0,k.h/2,2);
@@ -543,32 +547,38 @@ window.addEventListener('keydown',e=>{
   if(!aim) return;
   if(e.code==='ArrowLeft'||e.code==='KeyA') mv=-1;
   else if(e.code==='ArrowRight'||e.code==='KeyD') mv=1;
+  else if(e.code==='ArrowUp'||e.code==='KeyW'){ mvz=-1; e.preventDefault(); }
+  else if(e.code==='ArrowDown'||e.code==='KeyS'){ mvz=1; e.preventDefault(); }
+  else if((e.code==='KeyF'||e.code==='KeyQ')&&!e.repeat&&!aim.charging) setMode(!S.flat);
   else if(e.code==='Space'&&!e.repeat){ aim.charging=true; aim.t=0; e.preventDefault(); }
 });
 window.addEventListener('keyup',e=>{
   if(e.code==='Space') release();
   else if(['ArrowLeft','KeyA','ArrowRight','KeyD'].indexOf(e.code)>=0) mv=0;
+  else if(['ArrowUp','KeyW','ArrowDown','KeyS'].indexOf(e.code)>=0) mvz=0;
 });
-[['mvL',-1],['mvR',1]].forEach(a=>{
+[['mvL',-1,0],['mvR',1,0],['mvU',0,-1],['mvD',0,1]].forEach(a=>{
   const b=$(a[0]);
-  b.addEventListener('pointerdown',e=>{ mv=a[1]; e.preventDefault(); });
-  for(const ev of ['pointerup','pointerleave','pointercancel']) b.addEventListener(ev,()=>{ mv=0; });
+  b.addEventListener('pointerdown',e=>{ if(a[1]) mv=a[1]; else mvz=a[2]; e.preventDefault(); });
+  for(const ev of ['pointerup','pointerleave','pointercancel']) b.addEventListener(ev,()=>{ if(a[1]) mv=0; else mvz=0; });
 });
 function updateAim(dt){
   if(!aim) return;
   if(aim.charging) aim.t+=dt;
-  else if(mv) S.px=clamp(S.px+mv*1.7*dt,-FW/2+0.1,FW/2-0.1);
-  const x0=S.px;
-  if(aim.gp) aim.yaw=clamp(Math.atan2(aim.gp.x-x0,Math.max(0.5,aim.z0-aim.gp.z)),-1,1);
-  camPos.x=x0; camLook.x=x0;
+  else { if(mv) S.px=clamp(S.px+mv*1.7*dt,-FW/2+0.1,FW/2-0.1); if(mvz) S.pb=clamp(S.pb+mvz*1.7*dt,0,3); }
+  const x0=S.px, z0=aim.z0+S.pb, max=aim.max+S.pb;
+  if(aim.gp) aim.yaw=clamp(Math.atan2(aim.gp.x-x0,Math.max(0.5,z0-aim.gp.z)),-1,1);
+  camPos.x=x0; camLook.x=x0; camPos.z=z0+4.2; camLook.z=z0-5;
   const p=aim.charging?1-Math.abs((aim.t*0.8)%2-1):0;
   const yaw=aim.yaw+(aim.charging?Math.sin(aim.t*3.3)*0.02:0);
-  const dx=Math.sin(yaw), dz=-Math.cos(yaw), range=aim.min+p*(aim.max-aim.min);
-  aim.cur={x:x0,dx,dz,range};
-  aimLine.visible=true; aimLine.position.set(x0,0.05,aim.z0); aimLine.rotation.y=-yaw; aimLine.scale.z=aim.charging?range:aim.max;
-  ring.visible=aim.charging; ring.position.set(x0+dx*range,0.05,aim.z0+dz*range);
-  aim.o.mesh.position.set(x0,0.74-p*0.14,aim.z0+p*0.3);
-  aim.o.mesh.rotation.set(-0.4-p*0.9,0,0);
+  const dx=Math.sin(yaw), dz=-Math.cos(yaw), range=aim.min+p*(max-aim.min);
+  const flat=S.flat&&aim.o===baton;
+  aim.cur={x:x0,z:z0,dx,dz,range,flat};
+  aimLine.visible=true; aimLine.position.set(x0,0.05,z0); aimLine.rotation.y=-yaw; aimLine.scale.z=aim.charging?range:max;
+  ring.visible=aim.charging; ring.position.set(x0+dx*range,0.05,z0+dz*range);
+  aim.o.mesh.position.set(x0,0.74-p*0.14,z0+p*0.3);
+  if(flat){ aim.o.mesh.position.set(x0,0.62,z0+p*0.35); aim.o.mesh.rotation.set(-1.48,0,0); aim.o.mesh.rotation.y=0; }
+  else aim.o.mesh.rotation.set(-0.4-p*0.9,0,0);
   $('pfill').style.width=(p*100)+'%';
 }
 
@@ -580,7 +590,8 @@ function aiBaton(att,z0,standing){
   else if(standing.length){ const k=standing[Math.floor(Math.random()*standing.length)]; tx=k.body.position.x; tz=k.body.position.z; }
   const x0=clamp(tx*0.85,-FW/2+0.2,FW/2-0.2);
   const d=Math.hypot(tx-x0,tz-z0), yaw=Math.atan2(-sgn(att)*(tx-x0),-sgn(att)*(tz-z0))+gauss()*diff.a;
-  return {x:x0,dx:-sgn(att)*Math.sin(yaw),dz:-sgn(att)*Math.cos(yaw),range:Math.max(1,(d+0.1)*(1+gauss()*diff.r))};
+  const flat=field.length>1&&field.filter(k=>Math.hypot(k.body.position.x-tx,k.body.position.z-tz)<0.6).length>1&&Math.random()<0.6;
+  return {x:x0,flat,dx:-sgn(att)*Math.sin(yaw),dz:-sgn(att)*Math.cos(yaw),range:Math.max(1,(d+(flat?0.2:0.1))*(1+gauss()*diff.r))};
 }
 
 /* ---------- Rules ---------- */
@@ -609,30 +620,36 @@ function evaluate(att,kingMode){
   return null;
 }
 
+function aiKubb(s){
+  const tx=(Math.random()<0.5?-1:1)*(0.6+Math.random()*0.6)+gauss()*0.25, d=(HB-0.2)+0.9+gauss()*0.3, yaw=Math.atan2(tx,d);
+  return {x:0,dx:Math.sin(yaw),dz:-s*Math.cos(yaw),range:d};
+}
+const LEFT=()=>({w:'P',why:'En spelare lämnade spelet.'});
 async function throwIn(att,list){
   const s=sgn(att), tgt=other(att), human=att==='P'&&!AUTO, z0=s*(HB-0.2);
   S.phase='in'; hud(); setCam(att,z0);
   const isOut=k=>{ const x=k.body.position.x, z=k.body.position.z; return Math.abs(x)>FW/2+0.035||s*z>0.035||s*z<-HB-0.035; };
-  const kingDown=()=>upright(king)?null:{w:tgt,c:'kubb',why:att==='P'?'Din inkastade kubb fällde kungen.':'Motståndarens inkastade kubb fällde kungen!'};
+  const kingDown=()=>upright(king)?null:{w:tgt,c:'kubb',why:att==='P'?'En inkastad kubb fällde kungen.':'Motståndarens inkastade kubb fällde kungen!'};
   // VM: alla kubbar kastas in först och ligger kvar; ogiltiga kastas om; sedan reses de där de ligger
+  let cnt=0;
   for(let round=0;round<2;round++){
     const todo=round?list.filter(isOut):list;
     if(round&&todo.length){
-      toast(todo.length+(todo.length>1?' kubbar':' kubb')+' utanför – '+(human?'du får kasta om':'motståndaren kastar om'));
+      toast(todo.length+(todo.length>1?' kubbar':' kubb')+' utanför – '+(att==='P'?'omkast':'motståndaren kastar om'));
       await wait(1.1); todo.forEach(remB);
     }
     for(let i=0;i<todo.length;i++){
-      const k=todo[i];
+      const k=todo[i], who=MP?mpWho(cnt):null; cnt++;
       k.body.collisionFilterGroup=1; k.body.collisionFilterMask=1; k.body.angularDamping=0.7;
-      let t;
-      if(human){ hint((round?'Omkast – kubb ':'Kasta in kubb ')+(i+1)+' av '+todo.length+' på motståndarens planhalva'); t=await playerAim(k,z0,1,8); }
-      else {
-        hint(round?'Motståndaren kastar om':'Motståndaren kastar in kubbar'); await wait(0.7);
-        const tx=(Math.random()<0.5?-1:1)*(0.6+Math.random()*0.6)+gauss()*0.25, d=(HB-0.2)+0.9+gauss()*0.3, yaw=Math.atan2(tx,d);
-        t={x:0,dx:Math.sin(yaw),dz:-s*Math.cos(yaw),range:d};
-      }
-      mpThrow(kubbs.indexOf(k),t,z0); addB(k);
-      await launch(k,t.x,z0,t.dx,t.dz,t.range,0.55,0.6,2);
+      let t=null, by=null;
+      const txt=(round?'Omkast – kubb ':'Kasta in kubb ')+(i+1)+' av '+todo.length+' på motståndarens planhalva';
+      if(MP&&who!==MP.me){ mpLabel('Din lagkamrat kastar'); hint('Din lagkamrat kastar in en kubb …'); remB(k); t=await mpAsk(who,kubbs.indexOf(k),z0,1,8); if(!t) return LEFT(); by=MP.seats[who]; }
+      else if(human){ mpLabel('Din tur'); hint(txt); t=await playerAim(k,z0,1,8); }
+      else { hint(att==='P'?null:(round?'Motståndaren kastar om':'Motståndaren kastar in kubbar')); await wait(0.7); t=aiKubb(s); }
+      if(MP&&MP.gone) return LEFT();
+      const zt=typeof t.z==='number'?t.z:z0;
+      mpThrow(kubbs.indexOf(k),t,zt,by); addB(k);
+      await launch(k,t.x,zt,t.dx,t.dz,t.range,0.55,0.6,2);
       const r=kingDown(); if(r) return r;
     }
   }
@@ -649,9 +666,10 @@ async function throwIn(att,list){
     k.half=tgt; k.type='field'; standUp(k,p[0],p[1]);
   }
   hud();
-  if(pen.length){ toast('Utanför igen – '+(human?'motståndaren':'du')+' placerar '+(pen.length>1?'straffkubbarna':'straffkubben')); await wait(1.0); }
+  if(pen.length){ toast('Utanför igen – '+(att==='P'?'motståndaren':'du')+' placerar '+(pen.length>1?'straffkubbarna':'straffkubben')); await wait(1.0); }
   if(MP&&pen.length){
-    const pos=await mpWaitPlace(mpState({place:pen.map(k=>kubbs.indexOf(k))}));
+    const pos=await mpWaitPlace(pen.map(k=>kubbs.indexOf(k)));
+    if(MP.gone) return LEFT();
     for(const k of pen.splice(0)){
       const a=pos&&pos.find(q=>q&&q[0]===kubbs.indexOf(k));
       const p=a?freeSpot(k,-a[1],-a[2],tgt):freeSpot(k,(Math.random()<0.5?-1:1)*2.1,sgn(tgt)*3.4,tgt);
@@ -671,24 +689,28 @@ async function throwIn(att,list){
 
 async function turn(att){
   const tgt=other(att), s=sgn(att), human=att==='P'&&!AUTO;
-  S.att=att; S.left=6; S.kingMode=false;
-  toast(att==='P'?'Din tur':'Motståndarens tur');
+  S.att=att; S.left=6; S.kingMode=false; mpLabel(null);
+  toast(MP?(MP.seats.length>2?'Ert lags tur':'Din tur'):att==='P'?'Din tur':'Motståndarens tur');
   if(pending.length){ const r=await throwIn(att,pending.splice(0)); if(r) return r; }
   S.phase='baton';
   const adv=kubbs.filter(k=>k.half===att&&k.type==='field'&&!k.down);
   const line=adv.length?Math.max(0.5,Math.min.apply(null,adv.map(k=>Math.abs(k.body.position.z)))):HB-0.2;
-  if(adv.length) toast(att==='P'?'Fördel: du kastar från närmaste fältkubb':'Motståndaren kastar från fältkubbslinjen');
+  if(adv.length) toast(att==='P'?'Fördel: kast från närmaste fältkubb':'Motståndaren kastar från fältkubbslinjen');
   for(let b=6;b>0;b--){
     const st=kubbs.filter(k=>k.half===tgt&&!k.down), kingMode=!st.length, z0=s*(kingMode?HB-0.2:line);
+    const who=MP?mpWho(6-b):null;
     S.left=b; S.kingMode=kingMode; hud(); setCam(att,z0);
-    let t;
-    if(human){
+    let t=null, by=null;
+    if(MP&&who!==MP.me){ mpLabel('Din lagkamrat kastar'); hint('Din lagkamrat kastar …'); setCam('A',0); t=await mpAsk(who,-1,z0,1.2,9.6); if(!t) return LEFT(); by=MP.seats[who]; }
+    else if(human){
+      mpLabel('Din tur');
       hint(kingMode?'Fäll kungen! 👑':st.some(k=>k.type==='field')?'Fäll fältkubbarna först':'Fäll baskubbarna');
       t=await playerAim(baton,z0,1.2,9.6);
     } else { hint(null); await wait(0.9); t=aiBaton(att,z0,st); }
-    if(MP&&MP.gone) return {w:'P',why:'Motståndaren lämnade spelet.'};
-    mpThrow(-1,t,z0); addB(baton); S.left=b-1; hud();
-    await launch(baton,t.x,z0,t.dx,t.dz,t.range,0.35,0.75,10);
+    if(MP&&MP.gone) return LEFT();
+    const zt=typeof t.z==='number'?t.z:z0;
+    mpThrow(-1,t,zt,by); addB(baton); S.left=b-1; hud();
+    await throwBaton(t,t.x,zt,t.dx,t.dz,t.range);
     remB(baton);
     const r=evaluate(att,kingMode); hud();
     if(r) return r;
@@ -701,10 +723,14 @@ async function turn(att){
   return null;
 }
 
-/* ---------- Multiplayer (room presence) ---------- */
-let MP=null, room=null, myPeer=null, mpWant=false, offPeers=null;
+/* ---------- Multiplayer: 1 mot 1 eller 2 mot 2 (delat läge via "presence") ---------- */
+// Platser (seats): 0 och 2 = lag 0, 1 och 3 = lag 1. Plats 0/1 leder sitt lags omgång (kör regler och fysik);
+// lagkamraten siktar hos sig och skickar kastet, motståndarna ser kasten och får det färdiga läget.
+let MP=null, room=null, myPeer=null, mpWant=false, mpMode=2, mpTeam=null, lastG=null, offPeers=null;
 const r3=v=>Math.round(v*1000)/1000, r5=v=>Math.round(v*1e5)/1e5;
 function mpStatus(t){ $('mpStat').textContent=t||''; }
+function mpLabel(t){ S.label=MP?t:null; hud(); }
+function mpWho(i){ return MP.mates[(MP.myTurns+i)%MP.mates.length]; }
 const API=window.KUBB_API||'api.php';
 let roomCode=null;
 function urlCode(){ try{ const c=(new URLSearchParams(location.search).get('spel')||'').toLowerCase(); return /^[a-z0-9]{3,12}$/.test(c)?c:null; }catch(_){ return null; } }
@@ -732,36 +758,50 @@ function phpRoom(url,code){
     onPeers(fn,e){ handlers.push(fn); onErr=e; setTimeout(()=>{ try{ fn({peers:list}); }catch(_){} },0); return ()=>{}; } };
 }
 // Direktkoppling mellan två webbläsare (WebRTC via PeerJS) – ingen egen server behövs
+// Direktkoppling mellan webbläsare (WebRTC via PeerJS), stjärna: värden (a) vidarebefordrar allas läge
 function p2pRoom(code){
   return new Promise(done=>{
     const P=window.Peer; if(!P){ done(null); return; }
-    const HOSTID='kubb3d-'+code;
-    let peer=null, conn=null, label='a', pres={}, remote=null, handlers=[], onErr=null, settled=false, tries=0, dead=false;
+    const HOSTID='kubb3d-'+code, NAMES='bcdefgh';
+    let peer=null, host=true, label='a', pres={}, all={}, conns={}, up=null, handlers=[], settled=false, tries=0, dead=false;
     const settle=v=>{ if(!settled){ settled=true; done(v); } };
-    const list=()=>{ const a=[{peer:label,kind:'viewer',sameTab:true,isMe:true,presence:pres}]; if(remote) a.push({peer:label==='a'?'b':'a',kind:'viewer',sameTab:false,isMe:false,presence:remote}); return a; };
+    const list=()=>{ const a=[{peer:label,kind:'viewer',sameTab:true,isMe:true,presence:pres}];
+      for(const k in all) if(k!==label&&all[k]&&typeof all[k]==='object') a.push({peer:k,kind:'viewer',sameTab:false,isMe:false,presence:all[k]}); return a; };
     const fire=()=>{ const l=list(); handlers.slice().forEach(h=>{ try{ h({peers:l}); }catch(_){} }); };
-    const send=()=>{ try{ if(conn&&conn.open) conn.send({p:pres}); }catch(_){} };
-    function wire(c){
-      if(conn&&conn!==c&&conn.open){ try{ c.close(); }catch(_){} return; }
-      conn=c;
-      c.on('open',()=>{ send(); });
-      c.on('data',d=>{ if(d&&d.p&&typeof d.p==='object'&&!Array.isArray(d.p)){ remote=d.p; fire(); } });
-      const gone=()=>{ if(conn===c){ conn=null; remote=null; fire(); } };
+    function send(){
+      try{
+        if(host){ const m=Object.assign({},all); m.a=pres; for(const k in conns){ const c=conns[k]; if(c&&c.open) c.send({you:k,all:m}); } }
+        else if(up&&up.open) up.send({p:pres});
+      }catch(_){}
+    }
+    function accept(c){
+      let k=null; for(const n of NAMES){ if(!conns[n]){ k=n; break; } }
+      if(!k){ try{ c.close(); }catch(_){} return; }
+      conns[k]=c;
+      c.on('open',send);
+      c.on('data',d=>{ if(d&&d.p&&typeof d.p==='object'&&!Array.isArray(d.p)){ all[k]=d.p; fire(); send(); } });
+      const gone=()=>{ if(conns[k]===c){ delete conns[k]; delete all[k]; fire(); send(); } };
       c.on('close',gone); c.on('error',gone);
     }
     function asHost(){
-      label='a'; try{ peer=new P(HOSTID); }catch(_){ settle(null); return; }
+      host=true; label='a'; try{ peer=new P(HOSTID); }catch(_){ settle(null); return; }
       peer.on('open',()=>settle(api));
-      peer.on('connection',wire);
+      peer.on('connection',accept);
       peer.on('disconnected',()=>{ try{ if(!dead) peer.reconnect(); }catch(_){} });
       peer.on('error',e=>{ if(e&&e.type==='unavailable-id'&&!settled){ try{ peer.destroy(); }catch(_){} asGuest(); } else if(!settled) settle(null); });
     }
     function asGuest(){
-      label='b'; try{ peer=new P(); }catch(_){ settle(null); return; }
-      peer.on('open',()=>{ wire(peer.connect(HOSTID,{reliable:true,serialization:'json'})); settle(api); });
+      host=false; label='?'; try{ peer=new P(); }catch(_){ settle(null); return; }
+      peer.on('open',()=>{
+        const c=up=peer.connect(HOSTID,{reliable:true,serialization:'json'});
+        c.on('open',send);
+        c.on('data',d=>{ if(d&&typeof d.you==='string'&&d.all&&typeof d.all==='object'){ label=d.you; all=d.all; settle(api); fire(); } });
+        const gone=()=>{ if(up===c){ all={}; fire(); } };
+        c.on('close',gone); c.on('error',gone);
+      });
       peer.on('disconnected',()=>{ try{ if(!dead) peer.reconnect(); }catch(_){} });
       peer.on('error',e=>{
-        if(e&&e.type==='peer-unavailable'&&++tries<4&&!remote){ try{ peer.destroy(); }catch(_){} setTimeout(asHost,700); }
+        if(e&&e.type==='peer-unavailable'&&++tries<4&&!settled){ try{ peer.destroy(); }catch(_){} setTimeout(asHost,700); }
         else if(!settled) settle(null);
       });
     }
@@ -769,19 +809,29 @@ function p2pRoom(code){
       stop(){ dead=true; try{ peer&&peer.destroy(); }catch(_){} },
       presence(patch){ for(const k in patch){ if(patch[k]===null) delete pres[k]; else pres[k]=patch[k]; } send(); return Promise.resolve(); },
       peers:list,
-      onPeers(fn,e){ handlers.push(fn); onErr=e; setTimeout(()=>{ try{ fn({peers:list()}); }catch(_){} },0); return ()=>{}; } };
+      onPeers(fn){ handlers.push(fn); setTimeout(()=>{ try{ fn({peers:list()}); }catch(_){} },0); return ()=>{}; } };
     setInterval(send,1500);
     setTimeout(()=>settle(null),12000);
     asHost();
   });
 }
+function urlMode(){ try{ return new URLSearchParams(location.search).get('lag')==='2'?4:2; }catch(_){ return 2; } }
 function showLink(){
   if(!roomCode) return;
-  let u=''; try{ u=location.origin+location.pathname+'?spel='+roomCode; history.replaceState(null,'','?spel='+roomCode); }catch(_){}
+  let u=''; const q='?spel='+roomCode+(mpMode===4?'&lag=2':'');
+  try{ u=location.origin+location.pathname+q; history.replaceState(null,'',q); }catch(_){}
   $('mpLink').value=u; $('mpLinkRow').classList.remove('hidden');
 }
-async function mpJoin(){
+function mpButtons(){
+  const inv=!!urlCode();
+  $('mpBtn').textContent=mpWant?'Avbryt':inv?'Anslut till spelet':'Online 1 mot 1';
+  $('mpBtn4').classList.toggle('hidden',mpWant||inv);
+  $('mpTeams').classList.toggle('hidden',!(mpWant&&mpMode===4));
+}
+async function mpJoin(mode){
   if(mpWant){ mpCancel(); return; }
+  if(MP) return;
+  mpMode=urlCode()?urlMode():(mode===4?4:2); mpTeam=null;
   mpStatus('Ansluter …');
   if(!room){
     try{ if(window.claude&&window.claude.use) room=await window.claude.use('room'); }catch(_){ room=null; }
@@ -792,52 +842,78 @@ async function mpJoin(){
     }
   }
   if(!room){ mpStatus('Kunde inte ansluta till onlinespel. Kontrollera internetanslutningen och försök igen.'); return; }
-  try{ await room.presence({mp:1,opp:null,g:null,st:null,th:null,pl:null}); }
+  try{ await room.presence({mp:1,mode:mpMode,team:null,g:null,seats:null,st:null,th:null,pl:null,in:null}); }
   catch(_){ mpStatus('Kunde inte ansluta. Försök igen.'); return; }
-  mpWant=true; $('mpBtn').textContent='Avbryt';
-  mpStatus(roomCode?'Väntar på motståndare … skicka länken nedan till din medspelare, som öppnar den och trycker på "Spela online".':'Väntar på motståndare … be din medspelare öppna samma länk och trycka på "Spela online".');
-  showLink();
-  if(!offPeers) offPeers=room.onPeers(onPeers,()=>{ offPeers=null; mpStatus('Anslutningen bröts.'); if(MP){ MP.gone=true; MP.push({t:'left'}); } });
+  mpWant=true; mpButtons(); showLink(); lobbyText([]);
+  if(!offPeers) offPeers=room.onPeers(onPeers,()=>{ offPeers=null; mpStatus('Anslutningen bröts.'); if(MP) mpGone(); });
   else onPeers({peers:room.peers()});
 }
-function mpCancel(){ mpWant=false; $('mpLinkRow').classList.add('hidden'); if(room) room.presence({mp:0,opp:null,g:null}).catch(()=>{}); mpStatus(''); $('mpBtn').textContent='Spela online'; }
+function mpCancel(){ mpWant=false; $('mpLinkRow').classList.add('hidden'); if(room) room.presence({mp:0,g:null,seats:null}).catch(()=>{}); mpStatus(''); mpButtons(); }
+function mpPick(t){ if(!mpWant||mpMode!==4) return; mpTeam=t; room.presence({team:t}).catch(()=>{}); }
+// Lag i lobbyn: eget val gäller, övriga fördelas automatiskt (samma uträkning hos alla)
+function teamsOf(wait){
+  const m={}, c=[0,0], w=wait.slice().sort((a,b)=>a.peer<b.peer?-1:1);
+  for(const p of w){ const t=p.presence.team; if(t===0||t===1){ m[p.peer]=t; c[t]++; } }
+  for(const p of w){ if(m[p.peer]===undefined){ const t=c[0]<=c[1]?0:1; m[p.peer]=t; c[t]++; } }
+  return m;
+}
+function lobbyText(wait){
+  const link=roomCode?' Skicka länken nedan till de andra, som öppnar den och trycker på "Anslut till spelet".':' Be de andra öppna samma länk och välja samma spelläge.';
+  if(mpMode===2){ mpStatus('Väntar på motståndare …'+link); return; }
+  const m=teamsOf(wait), n=t=>wait.filter(p=>m[p.peer]===t).length, mine=m[myPeer];
+  mpStatus('2 mot 2 – Lag 1: '+n(0)+'/2 · Lag 2: '+n(1)+'/2'+(mine===undefined?'':' · du är i Lag '+(mine+1))+'. Spelet startar när båda lagen har två spelare.'+link);
+}
+function mpGone(){
+  if(!MP||MP.gone) return; MP.gone=true; MP.push({t:'left'});
+  for(const w of [MP.plWait,MP.inWait]) if(w) w.res(null);
+  MP.plWait=MP.inWait=null;
+}
 function onPeers(ch){
-  const ps=ch.peers.filter(p=>p.kind==='viewer'), me=ps.find(p=>p.sameTab);
+  const ps=ch.peers.filter(p=>p.kind==='viewer'&&p.presence), me=ps.find(p=>p.sameTab);
   if(me) myPeer=me.peer;
   if(MP){
-    const o=ps.find(p=>p.peer===MP.opp), pr=o&&o.presence;
-    if(!o||(MP.seen&&(!pr||pr.mp!==2||pr.g!==MP.g))){
-      if(!MP.gone){ MP.gone=true; MP.push({t:'left'}); if(MP.plWait){ const w=MP.plWait; MP.plWait=null; w.res(null); } }
-      return;
+    for(let i=0;i<MP.seats.length;i++){
+      if(i===MP.me) continue;
+      const id=MP.seats[i], o=ps.find(p=>p.peer===id), pr=o&&o.presence, ok=pr&&pr.mp===2&&pr.g===MP.g;
+      if(!o||(MP.seen[id]&&!ok)){ mpGone(); return; }
+      if(!ok) continue;
+      MP.seen[id]=true;
+      if(pr.th&&pr.th.id>(MP.lastTh[id]||0)){ MP.lastTh[id]=pr.th.id; MP.push({t:'th',d:pr.th,from:i}); }
+      if(pr.st&&pr.st.n>MP.lastN){ MP.lastN=pr.st.n; MP.push({t:'st',d:pr.st,from:i}); }
+      const iw=MP.inWait, pw=MP.plWait;
+      if(iw&&iw.peer===id&&pr.in&&pr.in.n===iw.n){ MP.inWait=null; iw.res(pr.in); }
+      if(pw&&pw.peer===id&&pr.pl&&pr.pl.n===pw.n){ MP.plWait=null; pw.res(pr.pl.p); }
     }
-    if(!pr||pr.mp!==2||pr.g!==MP.g) return;
-    MP.seen=true;
-    if(pr.th&&pr.th.id>MP.lastTh){ MP.lastTh=pr.th.id; MP.push({t:'th',d:pr.th}); }
-    if(pr.st&&pr.st.n>MP.lastN){ MP.lastN=pr.st.n; MP.push({t:'st',d:pr.st}); }
-    if(pr.pl&&MP.plWait&&pr.pl.n===MP.plWait.n){ const w=MP.plWait; MP.plWait=null; w.res(pr.pl.p); }
     return;
   }
   if(!mpWant||!myPeer) return;
-  const host=ps.find(p=>p.peer!==myPeer&&p.presence&&p.presence.mp===2&&p.presence.opp===myPeer&&p.presence.g);
-  if(host){ beginMP(host.peer,String(host.presence.g),false); return; }
-  const w=ps.filter(p=>p.presence&&p.presence.mp===1).map(p=>p.peer).sort(), i=w.indexOf(myPeer);
-  if(i>=0&&i%2===0&&w[i+1]) beginMP(w[i+1],Math.random().toString(36).slice(2,10),true);
+  const org=ps.find(p=>p.peer!==myPeer&&p.presence.mp===2&&p.presence.g&&p.presence.g!==lastG&&Array.isArray(p.presence.seats)&&p.presence.seats.indexOf(myPeer)>=0);
+  if(org){ beginMP(org.presence.seats.map(String),String(org.presence.g)); return; }
+  const wait=ps.filter(p=>p.presence.mp===1&&p.presence.mode===mpMode);
+  lobbyText(wait);
+  const ids=wait.map(p=>p.peer).sort();
+  if(ids[0]!==myPeer) return;
+  let seats=null;
+  if(mpMode===2){ if(ids.length>=2) seats=[ids[0],ids[1]]; }
+  else { const m=teamsOf(wait), t=n=>wait.filter(p=>m[p.peer]===n).map(p=>p.peer).sort(), a=t(0), b=t(1); if(a.length===2&&b.length===2) seats=[a[0],b[0],a[1],b[1]]; }
+  if(seats) beginMP(seats,Math.random().toString(36).slice(2,10));
 }
-function beginMP(opp,g,host){
-  mpWant=false; $('mpBtn').textContent='Spela online'; mpStatus(''); $('mpLinkRow').classList.add('hidden');
+function beginMP(seats,g){
+  const me=seats.indexOf(myPeer); if(me<0) return;
+  mpWant=false; lastG=g; mpStatus(''); $('mpLinkRow').classList.add('hidden'); mpButtons();
   const q=[]; let waiter=null;
-  MP={opp,g,host,n:0,lastN:0,lastTh:0,thId:0,plWait:null,seen:false,gone:false,
+  MP={seats,g,me,team:me%2,mates:seats.map((_,i)=>i).filter(i=>i%2===me%2),turnTeam:0,myTurns:0,lastN:0,lastTh:{},seen:{},plWait:null,inWait:null,gone:false,thId:0,
     push(ev){ if(waiter){ const w=waiter; waiter=null; w(ev); } else q.push(ev); },
     next(){ return q.length?Promise.resolve(q.shift()):new Promise(r=>{ waiter=r; }); }};
-  room.presence({mp:2,opp,g,st:null,th:null,pl:null}).catch(()=>{});
+  room.presence({mp:2,g,seats,st:null,th:null,pl:null,in:null}).catch(()=>{});
   $('startOv').classList.add('hidden'); $('endOv').classList.add('hidden');
   try{ if(!actx){const AC=window.AudioContext||window.webkitAudioContext; if(AC) actx=new AC();} }catch(_){}
-  gameMP(host);
+  gameMP();
   onPeers({peers:room.peers()});
 }
-function mpThrow(k,t,z0){
+function mpThrow(k,t,z,by){
   if(!MP) return;
-  room.presence({th:{id:++MP.thId,k,x:r3(t.x),z:r3(z0),dx:r5(t.dx),dz:r5(t.dz),r:r3(t.range)}}).catch(()=>{});
+  room.presence({th:{id:++MP.thId,k,by:by||null,m:t.flat?1:0,x:r3(t.x),z:r3(z),dx:r5(t.dx),dz:r5(t.dz),r:r3(t.range)}}).catch(()=>{});
 }
 function mpState(extra){
   if(!MP) return 0;
@@ -847,82 +923,115 @@ function mpState(extra){
   room.presence({st}).catch(()=>{});
   return n;
 }
-function mpWaitPlace(n){ return new Promise(res=>{ if(MP.gone) res(null); else MP.plWait={n,res}; }); }
-function applyState(s){
+// be lagkamraten sikta och kasta; svaret kommer i hens "in"
+function mpAsk(seat,k,z0,min,max){
+  const peer=MP.seats[seat], n=mpState({ask:{who:peer,k,z0:r3(z0),min,max}});
+  return new Promise(res=>{ if(MP.gone) res(null); else MP.inWait={n,peer,res}; })
+    .then(a=>a?{x:+a.x||0,z:+a.z||z0,dx:+a.dx||0,dz:+a.dz||-1,range:clamp(+a.r||1,0.5,14),flat:a.m===1}:null);
+}
+function mpWaitPlace(idx){
+  const peer=MP.seats[MP.team^1], n=mpState({place:idx,placeBy:peer});
+  return new Promise(res=>{ if(MP.gone) res(null); else MP.plWait={n,peer,res}; });
+}
+function applyState(s,mir){
+  const f=mir?-1:1;
   remB(baton);
   (s.k||[]).forEach((a,i)=>{
     const k=kubbs[i]; if(!k||!a) return;
-    k.half=a[2]===0?'A':'P'; k.type=a[3]===0?'base':'field';
+    k.half=(a[2]===0)!==mir?'P':'A'; k.type=a[3]===0?'base':'field';
     if(a[4]){ remB(k); k.down=true; }
-    else { standUp(k,-a[0],-a[1]); if(k.type==='base') k.home={x:-a[0],z:-a[1]}; }
+    else { standUp(k,f*a[0],f*a[1]); if(k.type==='base') k.home={x:f*a[0],z:f*a[1]}; }
   });
-  if(s.kg) standUp(king,-s.kg[0],-s.kg[1]);
+  if(s.kg) standUp(king,f*s.kg[0],f*s.kg[1]);
   if(typeof s.left==='number') S.left=clamp(s.left,0,6);
   hud();
 }
-async function remoteTurn(){
-  S.att='A'; S.left=6; S.phase='baton'; S.kingMode=false; hud(); setCam('A',0);
-  toast('Motståndarens tur'); hint('Motståndaren spelar …');
+function mpAnim(o,x,z,dx,dz,r,flat){
+  r=clamp(+r||1,0.5,14);
+  if(o===baton){ addB(o); return throwBaton({flat},x,z,dx,dz,r).then(()=>{ remB(baton); }); }
+  o.body.collisionFilterGroup=1; o.body.collisionFilterMask=1; o.body.angularDamping=0.7; addB(o);
+  return launch(o,x,z,dx,dz,r,0.55,0.6,2);
+}
+// följ ett lags omgång som inte leds av mig (motståndarnas, eller mitt lags när lagkamraten leder)
+async function listenTurn(){
+  const mine=MP.turnTeam===MP.team, big=MP.seats.length>2, myId=MP.seats[MP.me];
+  const idle=()=>{ S.att=mine?'P':'A'; mpLabel(mine?'Din lagkamrat kastar':big?'Motståndarnas tur':'Motståndarens tur'); hint(mine?'Din lagkamrat spelar …':big?'Motståndarna spelar …':'Motståndaren spelar …'); setCam('A',0); };
+  S.left=6; S.phase='baton'; S.kingMode=false; idle();
+  toast(mine?'Ert lags tur':big?'Motståndarnas tur':'Motståndarens tur');
   for(;;){
     const ev=await MP.next();
-    if(ev.t==='left') return {w:'P',why:'Motståndaren lämnade spelet.'};
+    if(ev.t==='left') return LEFT();
+    const mir=(ev.from%2)!==MP.team, f=mir?-1:1;
     if(ev.t==='th'){
-      const d=ev.d, o=d.k<0?baton:kubbs[d.k]; if(!o) continue;
-      if(o!==baton){ if(o.inWorld&&!o.down) continue; o.body.collisionFilterGroup=1; o.body.collisionFilterMask=1; o.body.angularDamping=0.7; }
-      addB(o);
-      await launch(o,-d.x,-d.z,-d.dx,-d.dz,clamp(+d.r||1,0.5,12),o===baton?0.35:0.55,o===baton?0.75:0.6,o===baton?10:2);
-      if(o===baton) remB(baton);
+      const d=ev.d, o=d.k<0?baton:kubbs[d.k]; if(!o||d.by===myId) continue;
+      if(o!==baton&&o.inWorld&&!o.down) continue;
+      await mpAnim(o,f*d.x,f*d.z,f*d.dx,f*d.dz,d.r,d.m===1);
       continue;
     }
-    const s=ev.d; applyState(s);
+    const s=ev.d; applyState(s,mir);
     if(s.over){
-      const iw=s.over.w===1, c=s.over.c;
-      return {w:iw?'P':'A',why:!iw?'Motståndaren fällde kungen.':c==='kubb'?'Motståndarens inkastade kubb fällde kungen!':'Motståndaren fällde kungen för tidigt!'};
+      const win=(s.over.w===0)!==mir, c=s.over.c;
+      return {w:win?'P':'A',why:mir?(win?(c==='kubb'?'Motståndarens inkastade kubb fällde kungen!':'Motståndaren fällde kungen för tidigt!'):'Motståndaren fällde kungen.')
+        :(win?'Ert lag fällde kungen!':(c==='kubb'?'En inkastad kubb fällde kungen.':'Kungen fälldes för tidigt.'))};
     }
-    if(s.place&&s.place.length){
+    if(!mir&&s.ask&&s.ask.who===myId){
+      const a=s.ask, o=a.k<0?baton:kubbs[a.k];
+      if(o){
+        const z0=+a.z0||HB-0.2; let t;
+        S.att='P'; S.phase=a.k<0?'baton':'in'; mpLabel('Din tur'); hud(); setCam('P',z0);
+        if(AUTO){ await wait(0.5); t=a.k<0?aiBaton('P',z0,kubbs.filter(k=>k.half==='A'&&!k.down)):aiKubb(1); }
+        else { hint(a.k<0?'Din tur att kasta':'Din tur – kasta in kubben på motståndarens planhalva'); if(o!==baton) remB(o); t=await playerAim(o,z0,+a.min||1,+a.max||9.6); }
+        const zt=typeof t.z==='number'?t.z:z0;
+        room.presence({in:{n:s.n,m:t.flat?1:0,x:r3(t.x),z:r3(zt),dx:r5(t.dx),dz:r5(t.dz),r:r3(t.range)}}).catch(()=>{});
+        idle();
+        await mpAnim(o,t.x,zt,t.dx,t.dz,t.range,!!t.flat);
+      }
+    }
+    if(mir&&s.place&&s.place.length&&s.placeBy===myId){
       const p=[];
       for(const i of s.place){
         const k=kubbs[i]; if(!k) continue; let q;
         if(AUTO) q=freeSpot(k,(Math.random()<0.5?-1:1)*2.1,3.4,'P');
-        else { toast('Motståndaren kastade utanför två gånger'); hint('Straffkubb: klicka där du vill ställa den på din planhalva'); q=await playerPlace(k); hint('Motståndaren spelar …'); }
+        else { toast('Motståndaren kastade utanför två gånger'); hint('Straffkubb: klicka där du vill ställa den på din planhalva'); q=await playerPlace(k); }
         k.half='P'; k.type='field'; standUp(k,q[0],q[1]); p.push([i,r3(q[0]),r3(q[1])]);
       }
-      hud(); room.presence({pl:{n:s.n,p}}).catch(()=>{});
+      hud(); idle(); room.presence({pl:{n:s.n,p}}).catch(()=>{});
     }
-    if(s.turn===1){ pending=(s.pend||[]).map(i=>kubbs[i]).filter(Boolean); hint(null); return null; }
+    if(s.turn===1){ pending=(s.pend||[]).map(i=>kubbs[i]).filter(Boolean); hint(null); MP.turnTeam^=1; return null; }
   }
 }
-async function gameMP(host){
-  running=true; pending=[]; remB(baton); S.px=0;
+async function gameMP(){
+  running=true; pending=[]; remB(baton); S.px=0; S.pb=0;
   for(const k of kubbs){ k.half=k.home0.z>0?'P':'A'; k.type='base'; k.home={x:k.home0.x,z:k.home0.z}; standUp(k,k.home.x,k.home.z); }
-  standUp(king,0,0); S.att=host?'P':'A'; S.left=6; hud();
-  let mine=host, r=null;
-  if(host) mpState({});
+  standUp(king,0,0); S.att=MP.team===0?'P':'A'; S.left=6; hud();
+  let r=null;
+  if(MP.me===0) mpState({});
   for(;;){
-    if(mine){
+    if(MP.turnTeam===MP.me){
       r=await turn('P');
-      if(r){ mpState({over:{w:r.w==='P'?0:1,c:r.c||''}}); break; }
-      mpState({turn:1,pend:pending.map(k=>kubbs.indexOf(k))}); pending=[]; mine=false;
-    } else { r=await remoteTurn(); if(r) break; mine=true; }
+      if(r){ if(!MP.gone) mpState({over:{w:r.w==='P'?0:1,c:r.c||''}}); break; }
+      mpState({turn:1,pend:pending.map(k=>kubbs.indexOf(k))}); pending=[]; MP.myTurns++; MP.turnTeam^=1;
+    } else { r=await listenTurn(); if(r) break; if(MP.turnTeam!==MP.me) pending=[]; }
   }
-  const m=MP; MP=null;
-  setTimeout(()=>{ if(room&&!MP&&!mpWant) room.presence({mp:0,opp:null,g:null}).catch(()=>{}); },4000);
-  finish(r);
+  const big=MP.seats.length>2; MP=null; S.label=null;
+  setTimeout(()=>{ if(room&&!MP&&!mpWant) room.presence({mp:0,g:null,seats:null}).catch(()=>{}); },4000);
+  if(big&&r.w==='P'&&r.why==='Du fällde kungen!') r.why='Ert lag fällde kungen!';
+  finish(r,big);
 }
 
 let running=false;
 async function game(){
-  running=true; pending=[]; remB(baton); S.px=0;
+  running=true; pending=[]; remB(baton); S.px=0; S.pb=0; S.label=null;
   for(const k of kubbs){ k.half=k.home0.z>0?'P':'A'; k.type='base'; k.home={x:k.home0.x,z:k.home0.z}; standUp(k,k.home.x,k.home.z); }
   standUp(king,0,0);
   let att='P',r=null;
   while(!(r=await turn(att))) att=other(att);
   finish(r);
 }
-async function finish(r){
+async function finish(r,big){
   running=false; hint(null); hud(); aim=null; place=null; aimLine.visible=ring.visible=false; showAimUI(false);
   await wait(1.2);
-  $('endT').textContent=r.w==='P'?'Du vann! 👑':'Du förlorade';
+  $('endT').textContent=r.w==='P'?(big?'Ni vann! 👑':'Du vann! 👑'):(big?'Ni förlorade':'Du förlorade');
   $('endP').textContent=r.why;
   $('endOv').classList.remove('hidden');
   if(window.KUBB_LOG) window.KUBB_LOG('END '+r.w+' '+r.why);
@@ -935,9 +1044,14 @@ function start(d){
   if(!running) game();
 }
 document.querySelectorAll('[data-d]').forEach(b=>b.addEventListener('click',()=>start(b.dataset.d)));
-$('mpBtn').addEventListener('click',mpJoin);
+$('modeBtn').addEventListener('click',()=>{ if(aim&&!aim.charging) setMode(!S.flat); });
+$('mpBtn').addEventListener('click',()=>mpJoin(2));
+$('mpBtn4').addEventListener('click',()=>mpJoin(4));
+$('mpT0').addEventListener('click',()=>mpPick(0));
+$('mpT1').addEventListener('click',()=>mpPick(1));
+mpButtons();
 $('mpCopy').addEventListener('click',()=>{ const i=$('mpLink'); try{ i.select(); navigator.clipboard.writeText(i.value).then(()=>{ $('mpCopy').textContent='Kopierad!'; },()=>{}); }catch(_){} });
-if(urlCode()) mpStatus('Du är inbjuden till ett spel – tryck på "Spela online".');
+if(urlCode()) mpStatus('Du är inbjuden till ett spel'+(urlMode()===4?' (2 mot 2)':'')+' – tryck på "Anslut till spelet".');
 $('again').addEventListener('click',()=>{ $('endOv').classList.add('hidden'); $('startOv').classList.remove('hidden'); });
 
 /* ---------- Camera & loop ---------- */
@@ -986,14 +1100,14 @@ function adapt(raw){
   fpsT+=raw; if(++fpsN<150) return;
   const avg=fpsT/fpsN; fpsN=0; fpsT=0;
   if(avg<1/30){ fpsStage=2; return; }
-  if(fpsStage===0){ composer=null; PR=Math.min(PR,1.25); renderer.setPixelRatio(PR); if(tallGrass) tallGrass.count=Math.floor(tallGrass.count*0.5); resize(); fpsStage=1; }
+  if(fpsStage===0){ PR=Math.min(PR,1.25); renderer.setPixelRatio(PR); if(tallGrass) tallGrass.count=Math.floor(tallGrass.count*0.5); resize(); fpsStage=1; }
   else { PR=1; renderer.setPixelRatio(1); renderer.shadowMap.type=THREE.PCFShadowMap; if(tallGrass) tallGrass.count=Math.floor(tallGrass.count*0.4); resize(); fpsStage=2; }
 }
 function frame(ms){ const raw=(ms-last)/1000, dt=clamp(raw,0.001,0.034); last=ms; if(last) adapt(raw); tick(dt); requestAnimationFrame(frame); }
 for(const k of kubbs){ k.half=k.home.z>0?'P':'A'; k.type='base'; standUp(k,k.home.x,k.home.z); }
 standUp(king,0,0); hud();
 (function(){ const seen=new Set(); scene.traverse(o=>{ const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[]; ms.forEach(m=>{ if(seen.has(m)||!m.color||m.userData.noConv) return; seen.add(m); m.color.convertSRGBToLinear(); }); }); })();
-window.__kubb={start,tick,mpJoin};
+window.__kubb={start,tick,mpJoin,mpPick};
 requestAnimationFrame(frame);
 })();
 </script>
