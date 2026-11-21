@@ -620,8 +620,15 @@ function evaluate(att,kingMode){
   return null;
 }
 
-function aiKubb(s){
-  const tx=(Math.random()<0.5?-1:1)*(0.6+Math.random()*0.6)+gauss()*0.25, d=(HB-0.2)+0.9+gauss()*0.3, yaw=Math.atan2(tx,d);
+// Datorn samlar sina inkast i en klunga på en sida om kungen (vid befintliga fältkubbar om det finns några)
+function aiAnchor(tgt){
+  const f=kubbs.filter(k=>k.half===tgt&&k.type==='field'&&!k.down&&k.inWorld);
+  let x=f.length?f.reduce((a,k)=>a+k.body.position.x,0)/f.length:(Math.random()<0.5?-1:1)*(0.7+Math.random()*0.4);
+  if(Math.abs(x)<0.55) x=(x<0?-1:1)*0.55;
+  return {x:clamp(x,-1.8,1.8)};
+}
+function aiKubb(s,anchor){
+  const n=diff.a/0.04, tx=anchor.x+gauss()*0.16*n, d=(HB-0.2)+0.9+gauss()*0.25*n, yaw=Math.atan2(tx,d);
   return {x:0,dx:Math.sin(yaw),dz:-s*Math.cos(yaw),range:d};
 }
 const LEFT=()=>({w:'P',why:'En spelare lämnade spelet.'});
@@ -631,7 +638,7 @@ async function throwIn(att,list){
   const isOut=k=>{ const x=k.body.position.x, z=k.body.position.z; return Math.abs(x)>FW/2+0.035||s*z>0.035||s*z<-HB-0.035; };
   const kingDown=()=>upright(king)?null:{w:tgt,c:'kubb',why:att==='P'?'En inkastad kubb fällde kungen.':'Motståndarens inkastade kubb fällde kungen!'};
   // VM: alla kubbar kastas in först och ligger kvar; ogiltiga kastas om; sedan reses de där de ligger
-  let cnt=0;
+  let cnt=0; const anchor=aiAnchor(tgt);
   for(let round=0;round<2;round++){
     const todo=round?list.filter(isOut):list;
     if(round&&todo.length){
@@ -645,7 +652,7 @@ async function throwIn(att,list){
       const txt=(round?'Omkast – kubb ':'Kasta in kubb ')+(i+1)+' av '+todo.length+' på motståndarens planhalva';
       if(MP&&who!==MP.me){ mpLabel('Din lagkamrat kastar'); hint('Din lagkamrat kastar in en kubb …'); remB(k); t=await mpAsk(who,kubbs.indexOf(k),z0,1,8); if(!t) return LEFT(); by=MP.seats[who]; }
       else if(human){ mpLabel('Din tur'); hint(txt); t=await playerAim(k,z0,1,8); }
-      else { hint(att==='P'?null:(round?'Motståndaren kastar om':'Motståndaren kastar in kubbar')); await wait(0.7); t=aiKubb(s); }
+      else { hint(att==='P'?null:(round?'Motståndaren kastar om':'Motståndaren kastar in kubbar')); await wait(0.7); t=aiKubb(s,anchor); }
       if(MP&&MP.gone) return LEFT();
       const zt=typeof t.z==='number'?t.z:z0;
       mpThrow(kubbs.indexOf(k),t,zt,by); addB(k);
@@ -979,7 +986,7 @@ async function listenTurn(){
       if(o){
         const z0=+a.z0||HB-0.2; let t;
         S.att='P'; S.phase=a.k<0?'baton':'in'; mpLabel('Din tur'); hud(); setCam('P',z0);
-        if(AUTO){ await wait(0.5); t=a.k<0?aiBaton('P',z0,kubbs.filter(k=>k.half==='A'&&!k.down)):aiKubb(1); }
+        if(AUTO){ await wait(0.5); t=a.k<0?aiBaton('P',z0,kubbs.filter(k=>k.half==='A'&&!k.down)):aiKubb(1,aiAnchor('A')); }
         else { hint(a.k<0?'Din tur att kasta':'Din tur – kasta in kubben på motståndarens planhalva'); if(o!==baton) remB(o); t=await playerAim(o,z0,+a.min||1,+a.max||9.6); }
         const zt=typeof t.z==='number'?t.z:z0;
         room.presence({in:{n:s.n,m:t.flat?1:0,x:r3(t.x),z:r3(zt),dx:r5(t.dx),dz:r5(t.dz),r:r3(t.range)}}).catch(()=>{});
